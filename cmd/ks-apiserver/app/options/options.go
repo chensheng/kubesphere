@@ -69,7 +69,7 @@ func NewServerRunOptions() *ServerRunOptions {
 
 func (s *ServerRunOptions) Flags() (fss cliflag.NamedFlagSets) {
 	fs := fss.FlagSet("generic")
-	fs.BoolVar(&s.DebugMode, "debug", false, "Don't enable this if you don't know what it means.")
+	fs.BoolVar(&s.DebugMode, "debug", true, "Don't enable this if you don't know what it means.")
 	s.GenericServerRunOptions.AddFlags(fs, s.GenericServerRunOptions)
 	s.KubernetesOptions.AddFlags(fss.FlagSet("kubernetes"), s.KubernetesOptions)
 	s.AuthenticationOptions.AddFlags(fss.FlagSet("authentication"), s.AuthenticationOptions)
