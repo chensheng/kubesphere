@@ -31,4 +31,4 @@ coverage.txt
 kustomize/network/etcd
 apiserver.local.config
 tmp/
-kubesphere.yaml
+#kubesphere.yaml
