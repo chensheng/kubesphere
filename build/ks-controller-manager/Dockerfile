@@ -38,6 +38,7 @@ RUN mkdir -p ${OUTDIR}/usr/local/bin/
 WORKDIR /workspace
 ADD . /workspace/
 
+ENV GOPROXY=https://goproxy.cn,direct
 RUN make ks-controller-manager
 RUN mv /workspace/bin/cmd/controller-manager ${OUTDIR}/usr/local/bin/
 
