@@ -11,9 +11,9 @@ authentication:
     maximumClockSkew: 10s
     multipleLogin: True
     kubectlImage: kubesphere/kubectl:v1.20.0
-    jwtSecret: "xAMCfee4A4HQCviPwS7oL43b0OylLSXN"
+    jwtSecret: "Aa123456"
 ldap:
-    host: 172.18.0.2:31053
+    host: FAKE
     managerDN: cn=admin,dc=kubesphere,dc=io
     managerPassword: admin
     userSearchBase: ou=Users,dc=kubesphere,dc=io
@@ -56,7 +56,7 @@ openpitrix:
     attachmentManagerEndpoint: "hyperpitrix.openpitrix-system.svc:9122"
     repoIndexerEndpoint:       "hyperpitrix.openpitrix-system.svc:9108"
 multicluster:
-    enable: false
+    enable: true
     agentImage: kubesphere/tower:v0.1.0
     proxyPublishService: tower.kubesphere-system.svc
 monitoring:

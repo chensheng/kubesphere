@@ -1,0 +1,95 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: (devel)
+  creationTimestamp: null
+  name: devopsapps.devops.kubesphere.io
+spec:
+  group: devops.kubesphere.io
+  names:
+    categories:
+    - devops
+    kind: DevOpsApp
+    listKind: DevOpsAppList
+    plural: devopsapps
+    singular: devopsapp
+  scope: Cluster
+  versions:
+  - name: v1alpha3
+    schema:
+      openAPIV3Schema:
+        description: DevOpsApp is the Schema for the devopsapps API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: DevOpsAppSpec defines the desired state of DevOpsApp
+            type: object
+            properties:
+              git:
+                description: 'Git information for this DevOpsApp'
+                type: object
+                properties:
+                  repo: 
+                    description: 'Git repository for this DevOpsApp'
+                    type: string
+                  username:
+                    description: 'Username of git repository'
+                    type: string
+                  password:
+                    description: 'Password for git repository'
+                    type: string
+              configCenter:
+                description: 'Configuration center information'
+                type: object
+                properties:
+                  url:
+                    description: 'URL for configuration center'
+                    type: string
+                  username:
+                    description: 'Username of configuration center'
+                    type: string
+                  password:
+                    description: 'Password of configuration center'
+                    type: string
+              environments:
+                description: 'Environments holds all environment for  this DevOpsApp'
+                type: array
+                items:
+                  description: 'Environment holds information that describes an app deployment environment'
+                  type: object
+                  properties:
+                    name:
+                      description: 'Name of environment'
+                      type: string
+                    desc:
+                      description: 'Description for environment'
+                      type: string
+                    cluster:
+                      description: 'Cluster the environment belong to'
+                      type: string
+          status:
+            description: DevOpsAppStatus defines the observed state of DevOpsApp
+            properties:
+              adminNamespace:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "make" to regenerate code after modifying this file'
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
