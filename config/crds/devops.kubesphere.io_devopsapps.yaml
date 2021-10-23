@@ -35,6 +35,25 @@ spec:
             description: DevOpsAppSpec defines the desired state of DevOpsApp
             type: object
             properties:
+              mode:
+                description: 'DevOps application mode: java, nodejs'
+                type : string
+              registry:
+                description: 'Docker registry for this DevOpsApp'
+                type: object
+                properties:
+                  url:
+                    description: 'URL of this docker registry'
+                    type: string
+                  username:
+                    description: 'Username of this docker registry'
+                    type: string
+                  password:
+                    description:  'Password of this docker registry'
+                    type: string
+                  email:
+                    description: 'Email of this docker registry'
+                    type: string
               git:
                 description: 'Git information for this DevOpsApp'
                 type: object
@@ -55,6 +74,9 @@ spec:
                   url:
                     description: 'URL for configuration center'
                     type: string
+                  clusterUrl:
+                    description: 'Cluster URL for the configuration center'
+                    type: string
                   username:
                     description: 'Username of configuration center'
                     type: string
@@ -69,14 +91,59 @@ spec:
                   type: object
                   properties:
                     name:
-                      description: 'Name of environment'
+                      description: 'Name of the environment'
                       type: string
                     desc:
-                      description: 'Description for environment'
+                      description: 'Description for the environment'
                       type: string
                     cluster:
-                      description: 'Cluster the environment belong to'
+                      description: 'Cluster of the environment'
                       type: string
+                    resource:
+                      description: 'Resource of the environment'
+                      type: object
+                      properties:
+                        memory:
+                          description: 'Max memory of the environment'
+                          type: string
+                        cpu:
+                          description: 'Max cpu of the environment'
+                          x-kubernetes-int-or-string: true
+                          anyOf:
+                          - type: integer
+                          - type: string
+                    configCenter:
+                      description: 'Configuration center information for the environment'
+                      type: object
+                      properties:
+                        url:
+                          description: 'URL for configuration center'
+                          type: string
+                        clusterUrl:
+                          description: 'Cluster URL for the configuration center'
+                          type: string
+                        username:
+                          description: 'Username of configuration center'
+                          type: string
+                        password:
+                          description: 'Password of configuration center'
+                          type: string
+                    registry:
+                      description: 'Docker registry for this DevOpsApp'
+                      type: object
+                      properties:
+                        url:
+                          description: 'URL of this docker registry'
+                          type: string
+                        username:
+                          description: 'Username of this docker registry'
+                          type: string
+                        password:
+                          description:  'Password of this docker registry'
+                          type: string
+                        email:
+                          description: 'Email of this docker registry'
+                          type: string
           status:
             description: DevOpsAppStatus defines the observed state of DevOpsApp
             properties:
