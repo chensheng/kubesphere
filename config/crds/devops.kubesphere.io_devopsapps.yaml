@@ -144,6 +144,34 @@ spec:
                         email:
                           description: 'Email of this docker registry'
                           type: string
+                    dependencies:
+                      description: 'Dependencies of the environment'
+                      type: array
+                      items:
+                        description: 'Dependency holds information that describes the dependency'
+                        type: object
+                        properties:
+                          category:
+                            description: 'Category of the dependency, e.g. mysql, mongodb, redis, seata, rocketmq, kafka'
+                            type: string
+                          desc:
+                            description: 'Description of the dependency'
+                            type: string
+                          url:
+                            description: 'URL of the dependency'
+                            type: string
+                          clusterUrl:
+                            description: 'Cluster URL of the dependency'
+                            type: string
+                          username:
+                            description: 'Username of the dependency'
+                            type: string
+                          password:
+                            description: 'Password of the dependency'
+                            type: string
+                          extra:
+                            description: 'Extra infomation of the dependency'
+                            type: object
           status:
             description: DevOpsAppStatus defines the observed state of DevOpsApp
             properties:
