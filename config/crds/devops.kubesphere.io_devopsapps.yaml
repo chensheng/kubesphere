@@ -103,6 +103,9 @@ spec:
                       description: 'Resource of the environment'
                       type: object
                       properties:
+                        replicas:
+                          description: 'Replicas of the environment'
+                          type: integer
                         memory:
                           description: 'Max memory of the environment'
                           type: string
