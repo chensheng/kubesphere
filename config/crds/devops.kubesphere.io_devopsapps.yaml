@@ -35,6 +35,9 @@ spec:
             description: DevOpsAppSpec defines the desired state of DevOpsApp
             type: object
             properties:
+              desc:
+                description: 'Description of the DevOpsApp'
+                type: string
               mode:
                 description: 'DevOps application mode: java, nodejs'
                 type : string
