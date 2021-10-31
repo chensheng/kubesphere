@@ -134,3 +134,9 @@ clean:
 # download controller-gen if necessary
 clientset:
 	./hack/generate_client.sh ${GV}
+
+crd:
+	go run ./vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go object:headerFile=./hack/boilerplate.go.txt paths=./pkg/apis/${CRD_PATH} rbac:roleName=controller-perms ${CRD_OPTIONS} output:crd:artifacts:config=config/crds
+
+new-api:
+	kubebuilder create api --group ${API_GROUP} --version ${API_VERSION} --kind ${API_KIND}

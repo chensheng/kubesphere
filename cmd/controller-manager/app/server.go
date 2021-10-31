@@ -36,6 +36,7 @@ import (
 	"kubesphere.io/kubesphere/pkg/apis"
 	controllerconfig "kubesphere.io/kubesphere/pkg/apiserver/config"
 	"kubesphere.io/kubesphere/pkg/controller/application"
+	"kubesphere.io/kubesphere/pkg/controller/devopsapp"
 	"kubesphere.io/kubesphere/pkg/controller/namespace"
 	"kubesphere.io/kubesphere/pkg/controller/network/webhooks"
 	"kubesphere.io/kubesphere/pkg/controller/openpitrix/helmapplication"
@@ -230,6 +231,11 @@ func run(s *options.KubeSphereControllerManagerOptions, stopCh <-chan struct{}) 
 	namespaceReconciler := &namespace.Reconciler{}
 	if err = namespaceReconciler.SetupWithManager(mgr); err != nil {
 		klog.Fatalf("Unable to create namespace controller: %v", err)
+	}
+
+	err = devopsapp.Add(mgr)
+	if err != nil {
+		klog.Fatal("Unable to create devopsapp controller")
 	}
 
 	err = helmrepo.Add(mgr)

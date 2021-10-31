@@ -1,0 +1,78 @@
+debug: true
+kubernetes:
+    kubeconfig: "/home/chensheng/.kube/config"
+    master: https://127.0.0.1:35949
+    $qps: 1e+06
+    burst: 1000000
+authentication:
+    authenticateRateLimiterMaxTries: 10
+    authenticateRateLimiterDuration: 10m0s
+    loginHistoryRetentionPeriod: 168h
+    maximumClockSkew: 10s
+    multipleLogin: True
+    kubectlImage: kubesphere/kubectl:v1.20.0
+    jwtSecret: "Aa123456"
+ldap:
+    host: FAKE
+    managerDN: cn=admin,dc=kubesphere,dc=io
+    managerPassword: admin
+    userSearchBase: ou=Users,dc=kubesphere,dc=io
+    groupSearchBase: ou=Groups,dc=kubesphere,dc=io
+redis:
+    host: "FAKE"
+    port: 26379
+    password: ""
+    db: 0
+s3:
+    endpoint: FAKE
+    region: us-east-1
+    disableSSL: true
+    forcePathStyle: true
+    accessKeyID: openpitrixminioaccesskey
+    secretAccessKey: openpitrixminiosecretkey
+    bucket: s2i-binaries
+mysql:
+    host: FAKE
+    username: root
+    password: password
+    maxIdleConnections: 100
+    maxOpenConnections: 100
+    maxConnectionLifeTime: 10s
+devops:
+    #host: FAKE
+    #username: admin
+    #password: xxx
+    #maxConnections: 100
+    host: http://172.18.0.2:30180/
+    username: admin
+    password:  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGt1YmVzcGhlcmUuaW8iLCJ1c2VybmFtZSI6ImFkbWluIiwidG9rZW5fdHlwZSI6InN0YXRpY190b2tlbiJ9.L5i0odECQkSAvQHlHrahtDjIgaPhnxodtBg0ebKuHR0
+    maxConnections: 100
+openpitrix:
+    runtimeManagerEndpoint:    "hyperpitrix.openpitrix-system.svc:9103"
+    clusterManagerEndpoint:    "hyperpitrix.openpitrix-system.svc:9104"
+    repoManagerEndpoint:       "hyperpitrix.openpitrix-system.svc:9101"
+    appManagerEndpoint:        "hyperpitrix.openpitrix-system.svc:9102"
+    categoryManagerEndpoint:   "hyperpitrix.openpitrix-system.svc:9113"
+    attachmentManagerEndpoint: "hyperpitrix.openpitrix-system.svc:9122"
+    repoIndexerEndpoint:       "hyperpitrix.openpitrix-system.svc:9108"
+multicluster:
+    enable: true
+    agentImage: kubesphere/tower:v0.1.0
+    proxyPublishService: tower.kubesphere-system.svc
+monitoring:
+    endpoint: http://prometheus-operated.kubesphere-monitoring-system.svc:9090
+logging:
+    host: FAKE
+    indexPrefix: ks-logstash-log
+events:
+    enable: false
+    host: http://elasticsearch-logging-data.kubesphere-logging-system.svc:9200
+    indexPrefix: ks-logstash-events
+auditing:
+    enable: false
+    host: http://elasticsearch-logging-data.kubesphere-logging-system.svc:9200
+    indexPrefix: ks-logstash-auditing
+alerting:
+    endpoint: http://alerting-client-server.kubesphere-alerting-system.svc:9200/api/
+notification:
+    endpoint: http://notification.kubesphere-alerting-system.svc:9200
