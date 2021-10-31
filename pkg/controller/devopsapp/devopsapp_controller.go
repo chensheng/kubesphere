@@ -18,18 +18,20 @@ package devopsapp
 
 import (
 	"context"
-	"reflect"
+	"strings"
+
+	"encoding/json"
+
+	"encoding/base64"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	devopsv1alpha3 "kubesphere.io/kubesphere/pkg/apis/devops/v1alpha3"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -84,6 +86,19 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 
 var _ reconcile.Reconciler = &ReconcileDevOpsApp{}
 
+type DockerConfigJson struct {
+	Auths DockerConfigMap `json:"auths"`
+}
+
+type DockerConfigMap map[string]DockerConfigEntry
+
+type DockerConfigEntry struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Email    string `json:"email"`
+	Auth     string `json:"auth,omitempty"`
+}
+
 // ReconcileDevOpsApp reconciles a DevOpsApp object
 type ReconcileDevOpsApp struct {
 	client.Client
@@ -101,8 +116,9 @@ type ReconcileDevOpsApp struct {
 // +kubebuilder:rbac:groups=devops.kubesphere.io,resources=devopsapps/status,verbs=get;update;patch
 func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	// Fetch the DevOpsApp instance
-	instance := &devopsv1alpha3.DevOpsApp{}
-	err := r.Get(context.TODO(), request.NamespacedName, instance)
+	rootCtx := context.Background()
+	devopsapp := &devopsv1alpha3.DevOpsApp{}
+	err := r.Get(rootCtx, request.NamespacedName, devopsapp)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
@@ -113,55 +129,55 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
-	// TODO(user): Change this to be the object type created by your controller
-	// Define the desired Deployment object
-	deploy := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      instance.Name + "-deployment",
-			Namespace: instance.Namespace,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{"deployment": instance.Name + "-deployment"},
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"deployment": instance.Name + "-deployment"}},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "nginx",
-							Image: "nginx",
-						},
-					},
-				},
-			},
-		},
-	}
-	if err := controllerutil.SetControllerReference(instance, deploy, r.scheme); err != nil {
-		return reconcile.Result{}, err
+	envs := devopsapp.Spec.Environments
+	if envs == nil || len(envs) == 0 {
+		return reconcile.Result{}, nil
 	}
 
-	// TODO(user): Change this for the object type created by your controller
-	// Check if the Deployment already exists
-	found := &appsv1.Deployment{}
-	err = r.Get(context.TODO(), types.NamespacedName{Name: deploy.Name, Namespace: deploy.Namespace}, found)
-	if err != nil && errors.IsNotFound(err) {
-		log.Info("Creating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
-		err = r.Create(context.TODO(), deploy)
-		return reconcile.Result{}, err
-	} else if err != nil {
-		return reconcile.Result{}, err
+	devopsappName := devopsapp.ObjectMeta.GenerateName
+	if devopsappName == "" {
+		devopsappName = devopsapp.ObjectMeta.Name
 	}
 
-	// TODO(user): Change this for the object type created by your controller
-	// Update the found object and write the result back if there are any changes
-	if !reflect.DeepEqual(deploy.Spec, found.Spec) {
-		found.Spec = deploy.Spec
-		log.Info("Updating Deployment", "namespace", deploy.Namespace, "name", deploy.Name)
-		err = r.Update(context.TODO(), found)
-		if err != nil {
-			return reconcile.Result{}, err
+	for _, env := range envs {
+		projectName := env.Name + "-" + devopsappName
+		project := &corev1.Namespace{}
+		if err = r.Get(rootCtx, types.NamespacedName{Name: projectName}, project); err != nil {
+			return reconcile.Result{}, nil
+		} else {
+			harborSecret := &corev1.Secret{}
+			if err = r.Get(rootCtx, types.NamespacedName{Name: "harbor", Namespace: projectName}, harborSecret); err != nil {
+				registryUrl := devopsapp.Spec.Registry.Url
+
+				rawAuth := devopsapp.Spec.Registry.Username + ":" + devopsapp.Spec.Registry.Password
+				encodedAuth := make([]byte, base64.StdEncoding.EncodedLen(len(rawAuth)))
+				base64.StdEncoding.Encode(encodedAuth, []byte(rawAuth))
+				auth := string(encodedAuth)
+				if strings.HasSuffix(auth, "==") {
+					auth = auth[0 : len(auth)-2]
+				}
+
+				dockerConfigJson := &DockerConfigJson{Auths: DockerConfigMap{}}
+				dockerConfigJson.Auths[registryUrl] = DockerConfigEntry{
+					Username: devopsapp.Spec.Registry.Username,
+					Password: devopsapp.Spec.Registry.Password,
+					Email:    devopsapp.Spec.Registry.Email,
+					Auth:     auth,
+				}
+				secretData, _ := json.Marshal(dockerConfigJson)
+
+				harborSecret.Name = "harbor"
+				harborSecret.Namespace = projectName
+				harborSecret.Type = corev1.SecretTypeDockerConfigJson
+				harborSecret.StringData = map[string]string{corev1.DockerConfigJsonKey: string(secretData)}
+				if err = r.Create(rootCtx, harborSecret); err != nil {
+					return reconcile.Result{}, err
+				}
+			} else {
+
+			}
 		}
 	}
+
 	return reconcile.Result{}, nil
 }
