@@ -143,41 +143,81 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 		projectName := env.Name + "-" + devopsappName
 		project := &corev1.Namespace{}
 		if err = r.Get(rootCtx, types.NamespacedName{Name: projectName}, project); err != nil {
-			return reconcile.Result{}, nil
-		} else {
-			harborSecret := &corev1.Secret{}
-			if err = r.Get(rootCtx, types.NamespacedName{Name: "harbor", Namespace: projectName}, harborSecret); err != nil {
-				registryUrl := devopsapp.Spec.Registry.Url
-
-				rawAuth := devopsapp.Spec.Registry.Username + ":" + devopsapp.Spec.Registry.Password
-				encodedAuth := make([]byte, base64.StdEncoding.EncodedLen(len(rawAuth)))
-				base64.StdEncoding.Encode(encodedAuth, []byte(rawAuth))
-				auth := string(encodedAuth)
-				if strings.HasSuffix(auth, "==") {
-					auth = auth[0 : len(auth)-2]
-				}
-
-				dockerConfigJson := &DockerConfigJson{Auths: DockerConfigMap{}}
-				dockerConfigJson.Auths[registryUrl] = DockerConfigEntry{
-					Username: devopsapp.Spec.Registry.Username,
-					Password: devopsapp.Spec.Registry.Password,
-					Email:    devopsapp.Spec.Registry.Email,
-					Auth:     auth,
-				}
-				secretData, _ := json.Marshal(dockerConfigJson)
-
-				harborSecret.Name = "harbor"
-				harborSecret.Namespace = projectName
-				harborSecret.Type = corev1.SecretTypeDockerConfigJson
-				harborSecret.StringData = map[string]string{corev1.DockerConfigJsonKey: string(secretData)}
-				if err = r.Create(rootCtx, harborSecret); err != nil {
-					return reconcile.Result{}, err
-				}
-			} else {
-
-			}
+			continue
 		}
+
+		if err = checkHarborSecret(r, rootCtx, devopsapp.Spec.Registry, env, projectName); err != nil {
+			return reconcile.Result{}, err
+		}
+
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func checkHarborSecret(r *ReconcileDevOpsApp, ctx context.Context, registry *devopsv1alpha3.Registry, env devopsv1alpha3.Environment, namespace string) error {
+	envRegistry := &devopsv1alpha3.Registry{
+		Url:      registry.Url,
+		Username: registry.Username,
+		Password: registry.Password,
+		Email:    registry.Email,
+	}
+	if env.Registry != nil {
+		envRegistry.Url = env.Registry.Url
+		envRegistry.Username = env.Registry.Username
+		envRegistry.Password = env.Registry.Password
+		envRegistry.Email = env.Registry.Email
+	}
+
+	secretName := "harbor"
+	secretInstance := &corev1.Secret{}
+	rawAuth := envRegistry.Username + ":" + envRegistry.Password
+	encodedAuth := make([]byte, base64.StdEncoding.EncodedLen(len(rawAuth)))
+	base64.StdEncoding.Encode(encodedAuth, []byte(rawAuth))
+	auth := string(encodedAuth)
+	if strings.HasSuffix(auth, "==") {
+		auth = auth[0 : len(auth)-2]
+	}
+	if err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: namespace}, secretInstance); err != nil {
+		dockerConfigJson := &DockerConfigJson{Auths: DockerConfigMap{}}
+		dockerConfigJson.Auths[envRegistry.Url] = DockerConfigEntry{
+			Username: envRegistry.Username,
+			Password: envRegistry.Password,
+			Email:    envRegistry.Email,
+			Auth:     auth,
+		}
+		secretData, _ := json.Marshal(dockerConfigJson)
+
+		secretInstance.Name = secretName
+		secretInstance.Namespace = namespace
+		secretInstance.Type = corev1.SecretTypeDockerConfigJson
+		secretInstance.StringData = map[string]string{corev1.DockerConfigJsonKey: string(secretData)}
+		if err = r.Create(ctx, secretInstance); err != nil {
+			return err
+		} else {
+			return nil
+		}
+	}
+
+	secretData := secretInstance.Data[corev1.DockerConfigJsonKey]
+	dockerConfigJson := &DockerConfigJson{Auths: DockerConfigMap{}}
+	json.Unmarshal(secretData, dockerConfigJson)
+	dockerConfigEntry := dockerConfigJson.Auths[envRegistry.Url]
+	if dockerConfigEntry.Username == envRegistry.Username && dockerConfigEntry.Password == envRegistry.Password {
+		return nil
+	}
+
+	dockerConfigJson.Auths = DockerConfigMap{}
+	dockerConfigJson.Auths[envRegistry.Url] = DockerConfigEntry{
+		Username: envRegistry.Username,
+		Password: envRegistry.Password,
+		Email:    envRegistry.Email,
+		Auth:     auth,
+	}
+	secretDataBytes, _ := json.Marshal(dockerConfigJson)
+	secretInstance.StringData = map[string]string{corev1.DockerConfigJsonKey: string(secretDataBytes)}
+	if err := r.Update(ctx, secretInstance); err != nil {
+		return err
+	}
+	return nil
 }
