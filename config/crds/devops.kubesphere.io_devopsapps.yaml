@@ -62,13 +62,16 @@ spec:
                 type: object
                 properties:
                   repo: 
-                    description: 'Git repository for this DevOpsApp'
+                    description: 'Git repository of this DevOpsApp'
                     type: string
                   username:
-                    description: 'Username of git repository'
+                    description: 'Username of this git repository'
                     type: string
                   password:
-                    description: 'Password for git repository'
+                    description: 'Password of this git repository'
+                    type: string
+                  targetPath:
+                    description: 'Build target path of this git repository'
                     type: string
               configCenter:
                 description: 'Configuration center information'
@@ -101,6 +104,9 @@ spec:
                       type: string
                     cluster:
                       description: 'Cluster of the environment'
+                      type: string
+                    gateway:
+                      description: 'API gateway of the environment'
                       type: string
                     resource:
                       description: 'Resource of the environment'
