@@ -274,6 +274,20 @@ func checkDevOpsCredentials(r *ReconcileDevOpsApp, ctx context.Context, devopsap
 		if err = r.Create(ctx, gitSecret); err != nil {
 			return err
 		}
+	} else {
+		gitSecret := &corev1.Secret{}
+		if err = r.Get(ctx, types.NamespacedName{Namespace: devOpsNamespace, Name: gitCredentialName}, gitSecret); err != nil {
+			return nil
+		}
+		if string(gitSecret.Data["username"]) != gitUsername || string(gitSecret.Data["password"]) != gitPassword {
+			gitSecret.Data = map[string][]byte{
+				"username": []byte(gitUsername),
+				"password": []byte(gitPassword),
+			}
+			if err = r.Update(ctx, gitSecret); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
