@@ -27,9 +27,12 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	devopsv1alpha3 "kubesphere.io/kubesphere/pkg/apis/devops/v1alpha3"
+	devopsClient "kubesphere.io/kubesphere/pkg/simple/client/devops"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -39,7 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-var log = logf.Log.WithName("controller")
+var log = logf.Log.WithName("devopsapp_controller")
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -48,13 +51,13 @@ var log = logf.Log.WithName("controller")
 
 // Add creates a new DevOpsApp Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager) error {
-	return add(mgr, newReconciler(mgr))
+func Add(mgr manager.Manager, devopsClient devopsClient.Interface) error {
+	return add(mgr, newReconciler(mgr, devopsClient))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileDevOpsApp{Client: mgr.GetClient(), scheme: mgr.GetScheme()}
+func newReconciler(mgr manager.Manager, devopsClient devopsClient.Interface) reconcile.Reconciler {
+	return &ReconcileDevOpsApp{Client: mgr.GetClient(), scheme: mgr.GetScheme(), devopsClient: devopsClient}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -102,7 +105,8 @@ type DockerConfigEntry struct {
 // ReconcileDevOpsApp reconciles a DevOpsApp object
 type ReconcileDevOpsApp struct {
 	client.Client
-	scheme *runtime.Scheme
+	scheme       *runtime.Scheme
+	devopsClient devopsClient.Interface
 }
 
 // Reconcile reads that state of the cluster for a DevOpsApp object and makes changes based on the state read
@@ -147,6 +151,10 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 		}
 
 		if err = checkHarborSecret(r, rootCtx, devopsapp.Spec.Registry, env, projectName); err != nil {
+			return reconcile.Result{}, err
+		}
+
+		if err = checkDevOpsCredentials(r, rootCtx, devopsapp, env); err != nil {
 			return reconcile.Result{}, err
 		}
 
@@ -219,5 +227,54 @@ func checkHarborSecret(r *ReconcileDevOpsApp, ctx context.Context, registry *dev
 	if err := r.Update(ctx, secretInstance); err != nil {
 		return err
 	}
+	return nil
+}
+
+func checkDevOpsCredentials(r *ReconcileDevOpsApp, ctx context.Context, devopsapp *devopsv1alpha3.DevOpsApp, env devopsv1alpha3.Environment) error {
+	devopsappName := devopsapp.Name
+	workspace := devopsapp.Labels["kubesphere.io/workspace"]
+
+	devOpsProjectList := &devopsv1alpha3.DevOpsProjectList{}
+	opts := &client.ListOptions{
+		LabelSelector: labels.SelectorFromSet(labels.Set{"kubesphere.io/workspace": workspace}),
+	}
+	if err := r.List(ctx, devOpsProjectList, opts); err != nil || len(devOpsProjectList.Items) == 0 {
+		return nil
+	}
+
+	devOpsProject := devopsv1alpha3.DevOpsProject{}
+	for _, project := range devOpsProjectList.Items {
+		if devopsappName == project.GenerateName {
+			devOpsProject = project
+			break
+		}
+	}
+	if devOpsProject.Name == "" {
+		return nil
+	}
+
+	devOpsNamespace := devOpsProject.Name
+	gitCredentialName := "git"
+	gitUsername := devopsapp.Spec.Git.Username
+	gitPassword := devopsapp.Spec.Git.Password
+
+	var _, err = r.devopsClient.GetCredentialInProject(devOpsNamespace, gitCredentialName)
+	if err != nil {
+		gitSecret := &corev1.Secret{
+			Type: devopsv1alpha3.SecretTypeBasicAuth,
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      gitCredentialName,
+				Namespace: devOpsNamespace,
+			},
+			Data: map[string][]byte{
+				"username": []byte(gitUsername),
+				"password": []byte(gitPassword),
+			},
+		}
+		if err = r.Create(ctx, gitSecret); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
