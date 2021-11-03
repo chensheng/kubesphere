@@ -66,6 +66,7 @@ type Environment struct {
 	Registry     *Registry     `json:"registry,omitempty" description:"Docker registry for the environment"`
 	Resource     *EnvResource  `json:"resource,omitempty" description:"Resource of the environment"`
 	Dependencies []Dependency  `json:"dependencies,omitempty" description:"Dependencies of the environment"`
+	Credentials  []Credential  `json:"credentials,omitempty" description:"Credentials of the environment"`
 }
 
 type EnvResource struct {
@@ -82,6 +83,16 @@ type Dependency struct {
 	Username   string `json:"username,omitempty" description:"Username of the dependency"`
 	Password   string `json:"password,omitempty" description:"Password of the dependency"`
 	Database   string `json:"database,omitempty" description:"Database of the dependency"`
+}
+
+type Credential struct {
+	Name       string `json:"name,omitempty" description:"Credentail name"`
+	Type       string `json:"type,omitempty" description:"Credential type, e.g. kubeconfig, basic-auth, secret-text, ssh-auth"`
+	Content    string `json:"content,omitempty" description:"Content of kubeconfig"`
+	Username   string `json:"username,omitempty" description:"Username of basic-auth or ssh-auth"`
+	Password   string `json:"password,omitempty" description:"Password of basic-auth or ssh-auth"`
+	Secret     string `json:"secret,omitempty" description:"Secret of secret-text"`
+	PrivateKey string `json:"privateKey,omitempty" description:"Private key of ssh-auth"`
 }
 
 // DevOpsAppStatus defines the observed state of DevOpsApp

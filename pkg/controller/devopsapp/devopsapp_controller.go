@@ -253,42 +253,153 @@ func checkDevOpsCredentials(r *ReconcileDevOpsApp, ctx context.Context, devopsap
 		return nil
 	}
 
-	devOpsNamespace := devOpsProject.Name
-	gitCredentialName := "git"
-	gitUsername := devopsapp.Spec.Git.Username
-	gitPassword := devopsapp.Spec.Git.Password
-
-	var _, err = r.devopsClient.GetCredentialInProject(devOpsNamespace, gitCredentialName)
-	if err != nil {
-		gitSecret := &corev1.Secret{
-			Type: devopsv1alpha3.SecretTypeBasicAuth,
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      gitCredentialName,
-				Namespace: devOpsNamespace,
-			},
-			Data: map[string][]byte{
-				"username": []byte(gitUsername),
-				"password": []byte(gitPassword),
-			},
-		}
-		if err = r.Create(ctx, gitSecret); err != nil {
-			return err
-		}
-	} else {
-		gitSecret := &corev1.Secret{}
-		if err = r.Get(ctx, types.NamespacedName{Namespace: devOpsNamespace, Name: gitCredentialName}, gitSecret); err != nil {
-			return nil
-		}
-		if string(gitSecret.Data["username"]) != gitUsername || string(gitSecret.Data["password"]) != gitPassword {
-			gitSecret.Data = map[string][]byte{
-				"username": []byte(gitUsername),
-				"password": []byte(gitPassword),
-			}
-			if err = r.Update(ctx, gitSecret); err != nil {
-				return err
-			}
-		}
+	devopsNamespace := devOpsProject.Name
+	if err := doCheckBasicAuthCredential(r, ctx, devopsNamespace, "git", devopsapp.Spec.Git.Username, devopsapp.Spec.Git.Password); err != nil {
+		return err
+	}
+	if err := doCheckBasicAuthCredential(r, ctx, devopsNamespace, "harbor", devopsapp.Spec.Registry.Username, devopsapp.Spec.Registry.Password); err != nil {
+		return err
 	}
 
+	if len(env.Credentials) == 0 {
+		return nil
+	}
+	
+	for _, credential := range env.Credentials {
+		if credential.Type == "basic-auth" {
+			err = doCheckBasicAuthCredential(r, ctx, devopsNamespace, credential.Name, credential.Username, credential.Password)
+		} else if credential.Type == "kubeconfig" {
+			err = doCheckKubeConfigCredential(r, ctx, devopsNamespace, credential.Name, credential.Content)
+		} else if credential.Type == "secret-text" {
+			err = doCheckSecretTextCredential(r, ctx, devopsNamespace, credential.Name, credential.Secret)
+		} else if credential.Type == "ssh-auth" {
+			err = doCheckSshAuthCredential(r, ctx, devopsNamespace, credential.Name, credential.Username, credential.Password, credential.PrivateKey)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func doCheckBasicAuthCredential(r *ReconcileDevOpsApp, ctx context.Context, namespace string, name string, username string, password string) error {
+	if _, err := r.devopsClient.GetCredentialInProject(namespace, name); err != nil {
+		secret := &corev1.Secret{
+			Type: devopsv1alpha3.SecretTypeBasicAuth,
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+			},
+			Data: map[string][]byte{
+				"username": []byte(username),
+				"password": []byte(password),
+			},
+		}
+		return r.Create(ctx, secret)
+	}
+
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
+		return nil
+	}
+
+	if string(secret.Data["username"]) != username || string(secret.Data["password"]) != password {
+		secret.Data = map[string][]byte{
+			"username": []byte(username),
+			"password": []byte(password),
+		}
+		return r.Update(ctx, secret)
+	}
+	return nil
+}
+
+func doCheckKubeConfigCredential(r *ReconcileDevOpsApp, ctx context.Context, namespace string, name string, content string) error {
+	if _, err := r.devopsClient.GetCredentialInProject(namespace, name); err != nil {
+		secret := &corev1.Secret{
+			Type: devopsv1alpha3.SecretTypeKubeConfig,
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+			},
+			Data: map[string][]byte{
+				"content": []byte(content),
+			},
+		}
+		return r.Create(ctx, secret)
+	}
+
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
+		return nil
+	}
+
+	if string(secret.Data["content"]) != content {
+		secret.Data = map[string][]byte{
+			"content": []byte(content),
+		}
+		return r.Update(ctx, secret)
+	}
+	return nil
+}
+
+func doCheckSecretTextCredential(r *ReconcileDevOpsApp, ctx context.Context, namespace string, name string, secretText string) error {
+	if _, err := r.devopsClient.GetCredentialInProject(namespace, name); err != nil {
+		secret := &corev1.Secret{
+			Type: devopsv1alpha3.SecretTypeSecretText,
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+			},
+			Data: map[string][]byte{
+				"secret": []byte(secretText),
+			},
+		}
+		return r.Create(ctx, secret)
+	}
+
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
+		return nil
+	}
+
+	if string(secret.Data["secret"]) != secretText {
+		secret.Data = map[string][]byte{
+			"secret": []byte(secretText),
+		}
+		return r.Update(ctx, secret)
+	}
+	return nil
+}
+
+func doCheckSshAuthCredential(r *ReconcileDevOpsApp, ctx context.Context, namespace string, name string, username string, password string, privateKey string) error {
+	if _, err := r.devopsClient.GetCredentialInProject(namespace, name); err != nil {
+		secret := &corev1.Secret{
+			Type: devopsv1alpha3.SecretTypeSSHAuth,
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: namespace,
+			},
+			Data: map[string][]byte{
+				"username":    []byte(username),
+				"passphrase":  []byte(password),
+				"private_key": []byte(privateKey),
+			},
+		}
+		return r.Create(ctx, secret)
+	}
+
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
+		return nil
+	}
+
+	if string(secret.Data["username"]) != username || string(secret.Data["passphrase"]) != password || string(secret.Data["private_key"]) != []byte(privateKey)) {
+		secret.Data = map[string][]byte{
+			"username":    []byte(username),
+			"passphrase":  []byte(password),
+			"private_key": []byte(privateKey),
+		}
+		return r.Update(ctx, secret)
+	}
 	return nil
 }

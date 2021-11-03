@@ -10,13 +10,11 @@ metadata:
 spec:
   group: devops.kubesphere.io
   names:
-    categories:
-    - devops
     kind: DevOpsApp
     listKind: DevOpsAppList
     plural: devopsapps
     singular: devopsapp
-  scope: Cluster
+  scope: Namespaced
   versions:
   - name: v1alpha3
     schema:
@@ -24,172 +22,147 @@ spec:
         description: DevOpsApp is the Schema for the devopsapps API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
           spec:
             description: DevOpsAppSpec defines the desired state of DevOpsApp
-            type: object
             properties:
-              desc:
-                description: 'Description of the DevOpsApp'
-                type: string
-              mode:
-                description: 'DevOps application mode: java, nodejs'
-                type : string
-              registry:
-                description: 'Docker registry for this DevOpsApp'
-                type: object
-                properties:
-                  url:
-                    description: 'URL of this docker registry'
-                    type: string
-                  username:
-                    description: 'Username of this docker registry'
-                    type: string
-                  password:
-                    description:  'Password of this docker registry'
-                    type: string
-                  email:
-                    description: 'Email of this docker registry'
-                    type: string
-              git:
-                description: 'Git information for this DevOpsApp'
-                type: object
-                properties:
-                  repo: 
-                    description: 'Git repository of this DevOpsApp'
-                    type: string
-                  username:
-                    description: 'Username of this git repository'
-                    type: string
-                  password:
-                    description: 'Password of this git repository'
-                    type: string
-                  targetPath:
-                    description: 'Build target path of this git repository'
-                    type: string
               configCenter:
-                description: 'Configuration center information'
-                type: object
                 properties:
-                  url:
-                    description: 'URL for configuration center'
-                    type: string
                   clusterUrl:
-                    description: 'Cluster URL for the configuration center'
-                    type: string
-                  username:
-                    description: 'Username of configuration center'
                     type: string
                   password:
-                    description: 'Password of configuration center'
                     type: string
+                  url:
+                    type: string
+                  username:
+                    type: string
+                type: object
+              desc:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file'
+                type: string
               environments:
-                description: 'Environments holds all environment for  this DevOpsApp'
-                type: array
                 items:
-                  description: 'Environment holds information that describes an app deployment environment'
-                  type: object
                   properties:
-                    name:
-                      description: 'Name of the environment'
-                      type: string
-                    desc:
-                      description: 'Description for the environment'
-                      type: string
                     cluster:
-                      description: 'Cluster of the environment'
+                      type: string
+                    configCenter:
+                      properties:
+                        clusterUrl:
+                          type: string
+                        password:
+                          type: string
+                        url:
+                          type: string
+                        username:
+                          type: string
+                      type: object
+                    credentials:
+                      items:
+                        properties:
+                          content:
+                            type: string
+                          name:
+                            type: string
+                          password:
+                            type: string
+                          privateKey:
+                            type: string
+                          secret:
+                            type: string
+                          type:
+                            type: string
+                          username:
+                            type: string
+                        type: object
+                      type: array
+                    dependencies:
+                      items:
+                        properties:
+                          category:
+                            type: string
+                          clusterUrl:
+                            type: string
+                          database:
+                            type: string
+                          desc:
+                            type: string
+                          password:
+                            type: string
+                          url:
+                            type: string
+                          username:
+                            type: string
+                        type: object
+                      type: array
+                    desc:
                       type: string
                     gateway:
-                      description: 'API gateway of the environment'
                       type: string
-                    resource:
-                      description: 'Resource of the environment'
-                      type: object
+                    name:
+                      type: string
+                    registry:
                       properties:
-                        replicas:
-                          description: 'Replicas of the environment'
-                          type: integer
-                        memory:
-                          description: 'Max memory of the environment'
+                        email:
                           type: string
+                        password:
+                          type: string
+                        url:
+                          type: string
+                        username:
+                          type: string
+                      type: object
+                    resource:
+                      properties:
                         cpu:
-                          description: 'Max cpu of the environment'
-                          x-kubernetes-int-or-string: true
                           anyOf:
                           - type: integer
                           - type: string
-                    configCenter:
-                      description: 'Configuration center information for the environment'
+                          x-kubernetes-int-or-string: true
+                        memory:
+                          type: string
+                        replicas:
+                          type: integer
                       type: object
-                      properties:
-                        url:
-                          description: 'URL for configuration center'
-                          type: string
-                        clusterUrl:
-                          description: 'Cluster URL for the configuration center'
-                          type: string
-                        username:
-                          description: 'Username of configuration center'
-                          type: string
-                        password:
-                          description: 'Password of configuration center'
-                          type: string
-                    registry:
-                      description: 'Docker registry for this DevOpsApp'
-                      type: object
-                      properties:
-                        url:
-                          description: 'URL of this docker registry'
-                          type: string
-                        username:
-                          description: 'Username of this docker registry'
-                          type: string
-                        password:
-                          description:  'Password of this docker registry'
-                          type: string
-                        email:
-                          description: 'Email of this docker registry'
-                          type: string
-                    dependencies:
-                      description: 'Dependencies of the environment'
-                      type: array
-                      items:
-                        description: 'Dependency holds information that describes the dependency'
-                        type: object
-                        properties:
-                          category:
-                            description: 'Category of the dependency, e.g. mysql, mongodb, redis, seata, rocketmq, kafka'
-                            type: string
-                          desc:
-                            description: 'Description of the dependency'
-                            type: string
-                          url:
-                            description: 'URL of the dependency'
-                            type: string
-                          clusterUrl:
-                            description: 'Cluster URL of the dependency'
-                            type: string
-                          username:
-                            description: 'Username of the dependency'
-                            type: string
-                          password:
-                            description: 'Password of the dependency'
-                            type: string
-                          database:
-                            description: 'Database of the dependency'
-                            type: string
+                  type: object
+                type: array
+              git:
+                properties:
+                  password:
+                    type: string
+                  repo:
+                    type: string
+                  targetPath:
+                    type: string
+                  username:
+                    type: string
+                type: object
+              mode:
+                type: string
+              registry:
+                properties:
+                  email:
+                    type: string
+                  password:
+                    type: string
+                  url:
+                    type: string
+                  username:
+                    type: string
+                type: object
+            type: object
           status:
             description: DevOpsAppStatus defines the observed state of DevOpsApp
-            properties:
-              adminNamespace:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "make" to regenerate code after modifying this file'
-                type: string
             type: object
         type: object
     served: true
