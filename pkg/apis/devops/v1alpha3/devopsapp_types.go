@@ -28,6 +28,7 @@ import (
 type DevOpsAppSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	AutoUpdate   bool          `json:"autoUpdate,omitempty" description:"Whether to update related resources when DevOpsApp CRD changed"`
 	Desc         string        `json:"desc,omitempty" description:"Description of the DevOpsApp"`
 	Mode         string        `json:"mode,omitempty" description:"DevOps application mode: java, nodejs"`
 	Registry     *Registry     `json:"registry,omitempty" description:"Docker registry for this DevOpsApp"`

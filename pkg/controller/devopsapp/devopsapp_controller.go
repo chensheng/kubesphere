@@ -125,12 +125,13 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 	err := r.Get(rootCtx, request.NamespacedName, devopsapp)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// Object not found, return.  Created objects are automatically garbage collected.
-			// For additional cleanup logic use finalizers.
 			return reconcile.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
+	}
+
+	if !devopsapp.Spec.AutoUpdate {
+		return reconcile.Result{}, nil
 	}
 
 	envs := devopsapp.Spec.Environments
