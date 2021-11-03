@@ -14,7 +14,7 @@ spec:
     listKind: DevOpsAppList
     plural: devopsapps
     singular: devopsapp
-  scope: Namespaced
+  scope: Cluster
   versions:
   - name: v1alpha3
     schema:
