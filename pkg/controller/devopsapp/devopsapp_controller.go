@@ -264,8 +264,9 @@ func checkDevOpsCredentials(r *ReconcileDevOpsApp, ctx context.Context, devopsap
 	if len(env.Credentials) == 0 {
 		return nil
 	}
-	
+
 	for _, credential := range env.Credentials {
+		var err error
 		if credential.Type == "basic-auth" {
 			err = doCheckBasicAuthCredential(r, ctx, devopsNamespace, credential.Name, credential.Username, credential.Password)
 		} else if credential.Type == "kubeconfig" {
@@ -393,7 +394,7 @@ func doCheckSshAuthCredential(r *ReconcileDevOpsApp, ctx context.Context, namesp
 		return nil
 	}
 
-	if string(secret.Data["username"]) != username || string(secret.Data["passphrase"]) != password || string(secret.Data["private_key"]) != []byte(privateKey)) {
+	if string(secret.Data["username"]) != username || string(secret.Data["passphrase"]) != password || string(secret.Data["private_key"]) != privateKey {
 		secret.Data = map[string][]byte{
 			"username":    []byte(username),
 			"passphrase":  []byte(password),
