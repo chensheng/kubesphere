@@ -626,7 +626,10 @@ func resolveNoScmPipeline(pipelineName string, devopsproject *devopsv1alpha3.Dev
 		return &devopsv1alpha3.NoScmPipeline{}, err
 	}
 
-	if env.Registry == nil || env.Registry.Url == "" {
+	if env.ConfigCenter == nil {
+		env.ConfigCenter = devopsapp.Spec.ConfigCenter
+	}
+	if env.Registry == nil {
 		env.Registry = devopsapp.Spec.Registry
 	}
 	templateData := TemplateData{
