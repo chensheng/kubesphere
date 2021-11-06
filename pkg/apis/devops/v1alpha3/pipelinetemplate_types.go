@@ -27,15 +27,21 @@ import (
 type PipelineTemplateSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Desc       string              `json:"desc,omitempty" description:"Description of the pipeline template"`
-	Mode       string              `json:"mode,moitempty" description:"Pipeline mode, e.g. java,nodejs"`
-	Template   string              `json:"template,omitempty" description:"Pipeline template content"`
-	Parameters []TemplateParameter `json:"parameters,omitempty" description:"Template parameters"`
+	Desc                  string                 `json:"desc,omitempty" description:"Description of the pipeline template"`
+	Mode                  string                 `json:"mode,moitempty" description:"Pipeline mode, e.g. java,nodejs"`
+	Jenkinsfile           string                 `json:"jenkinsfile,omitempty" description:"Jenkinsfile content"`
+	JenkinsfileParameters []JenkinsfileParameter `json:"jenkinsfileParameters,omitempty" description:"Pipeline jenkinsfile parameters"`
+	BuildParameters       []Parameter            `json:"buildParameters,omitempty" description:"Pipeline build parameters"`
+	Discarder             *DiscarderProperty     `json:"discarder,omitempty" description:"Pipeline build discarder"`
+	DisableConcurrent     bool                   `json:"disableConcurrent,omitempty" description:"Whether to prohibit the pipeline from running in parallel"`
+	TimerTrigger          *TimerTrigger          `json:"timerTrigger,omitempty" description:"Timer to trigger pipeline run"`
+	RemoteTrigger         *RemoteTrigger         `json:"remoteTrigger,omitempty" description:"Remote api define to trigger pipeline run"`
 }
 
-type TemplateParameter struct {
-	Name string `json:"name,omitempty" description:"Name of the template parameter"`
-	Desc string `json:"desc,omitempty" desription:"Description of the template parameter"`
+type JenkinsfileParameter struct {
+	Name         string `json:"name,omitempty" description:"Name of the template parameter"`
+	Description  string `json:"description,omitempty" desription:"Description of the template parameter"`
+	DefaultValue string `json:"defaultValue,omitempty" description:"Default value of the template parameter"`
 }
 
 // PipelineTemplateStatus defines the observed state of PipelineTemplate

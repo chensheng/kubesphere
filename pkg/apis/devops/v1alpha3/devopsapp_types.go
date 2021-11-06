@@ -60,16 +60,17 @@ type ConfigCenter struct {
 }
 
 type Environment struct {
-	Namespace    string        `json:"namespace,omitempty" description:"Namespace of the environment"`
-	Name         string        `json:"name,omitempty" description:"Name of the environment"`
-	Desc         string        `json:"desc,omitempty" description:"Description for the environment"`
-	Cluster      string        `json:"cluster,omitempty" description:"Cluster of the environment"`
-	Gateway      string        `json:"gateway,omitempty" description:"Gateway of the environment"`
-	ConfigCenter *ConfigCenter `json:"configCenter,omitempty" description:"Configuration center information for the environment"`
-	Registry     *Registry     `json:"registry,omitempty" description:"Docker registry for the environment"`
-	Resource     *EnvResource  `json:"resource,omitempty" description:"Resource of the environment"`
-	Dependencies []Dependency  `json:"dependencies,omitempty" description:"Dependencies of the environment"`
-	Credentials  []Credential  `json:"credentials,omitempty" description:"Credentials of the environment"`
+	Namespace    string             `json:"namespace,omitempty" description:"Namespace of the environment"`
+	Name         string             `json:"name,omitempty" description:"Name of the environment"`
+	Desc         string             `json:"desc,omitempty" description:"Description for the environment"`
+	Cluster      string             `json:"cluster,omitempty" description:"Cluster of the environment"`
+	Gateway      string             `json:"gateway,omitempty" description:"Gateway of the environment"`
+	ConfigCenter *ConfigCenter      `json:"configCenter,omitempty" description:"Configuration center information for the environment"`
+	Registry     *Registry          `json:"registry,omitempty" description:"Docker registry for the environment"`
+	Resource     *EnvResource       `json:"resource,omitempty" description:"Resource of the environment"`
+	Dependencies []Dependency       `json:"dependencies,omitempty" description:"Dependencies of the environment"`
+	Credentials  []Credential       `json:"credentials,omitempty" description:"Credentials of the environment"`
+	Pipeline     PipelineDefinition `json:"pipeline,omitempty" description:"Pipeline definition of the environment"`
 }
 
 type EnvResource struct {
@@ -99,7 +100,9 @@ type Credential struct {
 }
 
 type PipelineDefinition struct {
-	TemplateName string `json:"templateName,omitempty" description:"Pipeline template name"`
+	Name         string            `json:"name" description:"Pipeline name"`
+	TemplateName string            `json:"templateName,omitempty" description:"Pipeline template name"`
+	Parameters   map[string]string `json:"parameters,omitempty" description:"Pipeline parameters"`
 }
 
 // DevOpsAppStatus defines the observed state of DevOpsApp

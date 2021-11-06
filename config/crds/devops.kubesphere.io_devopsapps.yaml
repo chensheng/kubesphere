@@ -117,6 +117,19 @@ spec:
                       type: string
                     namespace:
                       type: string
+                    pipeline:
+                      properties:
+                        name:
+                          type: string
+                        parameters:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        templateName:
+                          type: string
+                      required:
+                      - name
+                      type: object
                     registry:
                       properties:
                         email:

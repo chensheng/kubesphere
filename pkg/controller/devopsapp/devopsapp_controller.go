@@ -17,7 +17,9 @@ limitations under the License.
 package devopsapp
 
 import (
+	"bytes"
 	"context"
+	"html/template"
 	"strings"
 
 	"encoding/json"
@@ -106,6 +108,13 @@ type DockerConfigEntry struct {
 	Auth     string `json:"auth,omitempty"`
 }
 
+type TemplateData struct {
+	Name        string
+	Parameters  map[string]string
+	Environment devopsv1alpha3.Environment
+	DevOpsApp   devopsv1alpha3.DevOpsAppSpec
+}
+
 // ReconcileDevOpsApp reconciles a DevOpsApp object
 type ReconcileDevOpsApp struct {
 	client.Client
@@ -182,6 +191,15 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 
 		if err = checkEnvCredentials(r, rootCtx, devopsproject, devopsapp, env); err != nil {
 			return reconcile.Result{}, err
+		}
+
+		pipeline, err := checkEnvPipeline(r, rootCtx, devopsproject, devopsapp, env)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		if pipeline.Name != env.Pipeline.Name {
+			devopsapp.Spec.Environments[index].Pipeline.Name = pipeline.Name
+			crdChanged = true
 		}
 	}
 
@@ -513,4 +531,123 @@ func doCheckSshAuthCredential(r *ReconcileDevOpsApp, ctx context.Context, namesp
 		"private_key": []byte(privateKey),
 	}
 	return r.Update(ctx, secret)
+}
+
+func checkEnvPipeline(r *ReconcileDevOpsApp, ctx context.Context, devopsproject *devopsv1alpha3.DevOpsProject, devopsapp *devopsv1alpha3.DevOpsApp, env devopsv1alpha3.Environment) (pipeline *devopsv1alpha3.Pipeline, err error) {
+	if env.Pipeline.TemplateName == "" {
+		return &devopsv1alpha3.Pipeline{}, nil
+	}
+
+	pipelineName := env.Pipeline.Name
+	if pipelineName == "" {
+		pipelineName = "pipeline-" + env.Name
+	}
+
+	pipelineTemplate := &devopsv1alpha3.PipelineTemplate{}
+	if err := r.Get(ctx, types.NamespacedName{Name: env.Pipeline.TemplateName}, pipelineTemplate); err != nil {
+		return &devopsv1alpha3.Pipeline{}, err
+	}
+
+	pipeline = &devopsv1alpha3.Pipeline{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: devopsproject.Name, Name: pipelineName}, pipeline); err != nil {
+		noScmPipeline, err := resolveNoScmPipeline(pipelineName, devopsproject, devopsapp, env, pipelineTemplate)
+		if err != nil {
+			return &devopsv1alpha3.Pipeline{}, err
+		}
+
+		pipeline.Name = pipelineName
+		pipeline.Namespace = devopsproject.Name
+		pipeline.Spec = devopsv1alpha3.PipelineSpec{
+			Type:     "pipeline",
+			Pipeline: noScmPipeline,
+		}
+		err = r.Create(ctx, pipeline)
+		return pipeline, err
+	}
+
+	newNoScmPipeline, err := resolveNoScmPipeline(pipelineName, devopsproject, devopsapp, env, pipelineTemplate)
+	if err != nil {
+		return &devopsv1alpha3.Pipeline{}, err
+	}
+
+	existingNoScmPipeline := pipeline.Spec.Pipeline
+	if !isPipelineChanged(existingNoScmPipeline, newNoScmPipeline) {
+		return pipeline, nil
+	}
+
+	pipeline.Spec.Pipeline = newNoScmPipeline
+	err = r.Update(ctx, pipeline)
+	return pipeline, err
+}
+
+func isPipelineChanged(existingNoScmPipeline *devopsv1alpha3.NoScmPipeline, newNoScmPipeline *devopsv1alpha3.NoScmPipeline) bool {
+	if existingNoScmPipeline.DisableConcurrent != newNoScmPipeline.DisableConcurrent {
+		return true
+	}
+
+	if existingNoScmPipeline.Discarder.DaysToKeep != newNoScmPipeline.Discarder.DaysToKeep || existingNoScmPipeline.Discarder.NumToKeep != newNoScmPipeline.Discarder.NumToKeep {
+		return true
+	}
+
+	if existingNoScmPipeline.Jenkinsfile != newNoScmPipeline.Jenkinsfile {
+		return true
+	}
+
+	if existingNoScmPipeline.RemoteTrigger.Token != newNoScmPipeline.RemoteTrigger.Token {
+		return true
+	}
+
+	if existingNoScmPipeline.TimerTrigger.Cron != newNoScmPipeline.TimerTrigger.Cron || existingNoScmPipeline.TimerTrigger.Interval != newNoScmPipeline.TimerTrigger.Interval {
+		return true
+	}
+
+	if len(existingNoScmPipeline.Parameters) != len(newNoScmPipeline.Parameters) {
+		return true
+	}
+
+	paramMap := make(map[string]devopsv1alpha3.Parameter)
+	for _, param := range existingNoScmPipeline.Parameters {
+		paramMap[param.Name] = param
+	}
+	for _, param := range newNoScmPipeline.Parameters {
+		existingParam, ok := paramMap[param.Name]
+		if !ok || existingParam.Type != param.Type || existingParam.DefaultValue != param.DefaultValue || existingParam.Description != param.Description {
+			return true
+		}
+	}
+
+	return false
+}
+
+func resolveNoScmPipeline(pipelineName string, devopsproject *devopsv1alpha3.DevOpsProject, devopsapp *devopsv1alpha3.DevOpsApp, env devopsv1alpha3.Environment, pipelineTemplate *devopsv1alpha3.PipelineTemplate) (noScmPipeline *devopsv1alpha3.NoScmPipeline, err error) {
+	goTplName := devopsproject.Name + "_" + pipelineName
+	goTemplate, err := template.New(goTplName).Parse(pipelineTemplate.Spec.Jenkinsfile)
+	if err != nil {
+		return &devopsv1alpha3.NoScmPipeline{}, err
+	}
+
+	if env.Registry == nil || env.Registry.Url == "" {
+		env.Registry = devopsapp.Spec.Registry
+	}
+	templateData := TemplateData{
+		Name:        devopsapp.Name,
+		Parameters:  env.Pipeline.Parameters,
+		Environment: env,
+		DevOpsApp:   devopsapp.Spec,
+	}
+	buffer := bytes.NewBuffer(nil)
+	if err = goTemplate.Execute(buffer, templateData); err != nil {
+		return &devopsv1alpha3.NoScmPipeline{}, err
+	}
+
+	noScmPipeline = &devopsv1alpha3.NoScmPipeline{
+		Name:              pipelineName,
+		Discarder:         pipelineTemplate.Spec.Discarder,
+		Parameters:        pipelineTemplate.Spec.BuildParameters,
+		DisableConcurrent: pipelineTemplate.Spec.DisableConcurrent,
+		TimerTrigger:      pipelineTemplate.Spec.TimerTrigger,
+		RemoteTrigger:     pipelineTemplate.Spec.RemoteTrigger,
+		Jenkinsfile:       buffer.String(),
+	}
+	return noScmPipeline, nil
 }
