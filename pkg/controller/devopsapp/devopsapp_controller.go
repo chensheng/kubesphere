@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	kubeclient "k8s.io/client-go/kubernetes"
 	devopsv1alpha3 "kubesphere.io/kubesphere/pkg/apis/devops/v1alpha3"
 	devopsClient "kubesphere.io/kubesphere/pkg/simple/client/devops"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,6 +41,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	"k8s.io/client-go/tools/clientcmd"
+	clusterinformer "kubesphere.io/kubesphere/pkg/client/informers/externalversions/cluster/v1alpha1"
 )
 
 var log = logf.Log.WithName("devopsapp_controller")
@@ -51,13 +55,13 @@ var log = logf.Log.WithName("devopsapp_controller")
 
 // Add creates a new DevOpsApp Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager, devopsClient devopsClient.Interface) error {
-	return add(mgr, newReconciler(mgr, devopsClient))
+func Add(mgr manager.Manager, devopsClient devopsClient.Interface, clusterInformer clusterinformer.ClusterInformer) error {
+	return add(mgr, newReconciler(mgr, devopsClient, clusterInformer))
 }
 
 // newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, devopsClient devopsClient.Interface) reconcile.Reconciler {
-	return &ReconcileDevOpsApp{Client: mgr.GetClient(), scheme: mgr.GetScheme(), devopsClient: devopsClient}
+func newReconciler(mgr manager.Manager, devopsClient devopsClient.Interface, clusterInformer clusterinformer.ClusterInformer) reconcile.Reconciler {
+	return &ReconcileDevOpsApp{Client: mgr.GetClient(), scheme: mgr.GetScheme(), devopsClient: devopsClient, clusterInformer: clusterInformer, clusterClients: make(map[string]*kubeclient.Clientset)}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -105,8 +109,10 @@ type DockerConfigEntry struct {
 // ReconcileDevOpsApp reconciles a DevOpsApp object
 type ReconcileDevOpsApp struct {
 	client.Client
-	scheme       *runtime.Scheme
-	devopsClient devopsClient.Interface
+	scheme          *runtime.Scheme
+	devopsClient    devopsClient.Interface
+	clusterInformer clusterinformer.ClusterInformer
+	clusterClients  map[string]*kubeclient.Clientset
 }
 
 // Reconcile reads that state of the cluster for a DevOpsApp object and makes changes based on the state read
@@ -134,6 +140,7 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, nil
 	}
 
+	workspace := devopsapp.ObjectMeta.Labels["kubesphere.io/workspace"]
 	envs := devopsapp.Spec.Environments
 	if envs == nil || len(envs) == 0 {
 		return reconcile.Result{}, nil
@@ -144,124 +151,238 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 		devopsappName = devopsapp.ObjectMeta.Name
 	}
 
-	for _, env := range envs {
-		projectName := env.Name + "-" + devopsappName
-		project := &corev1.Namespace{}
-		if err = r.Get(rootCtx, types.NamespacedName{Name: projectName}, project); err != nil {
-			continue
-		}
+	crdChanged := false
+	devopsproject, err := checkDevOpsProject(r, rootCtx, devopsapp)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	if devopsproject.Name != devopsapp.Spec.DevOpsProject {
+		devopsapp.Spec.DevOpsProject = devopsproject.Name
+		crdChanged = true
+	}
+	if err := checkCommonCredentials(r, rootCtx, devopsproject, devopsapp); err != nil {
+		return reconcile.Result{}, err
+	}
 
-		if err = checkHarborSecret(r, rootCtx, devopsapp.Spec.Registry, env, projectName); err != nil {
+	for index, env := range envs {
+		var clusterClient, err = getClusterClient(r, env.Cluster)
+		envNamespace, err := checkEnvNamespace(rootCtx, clusterClient, workspace, devopsappName, env)
+		if err != nil {
 			return reconcile.Result{}, err
 		}
 
-		if err = checkDevOpsCredentials(r, rootCtx, devopsapp, env); err != nil {
+		if envNamespace.Name != env.Namespace {
+			devopsapp.Spec.Environments[index].Namespace = envNamespace.Name
+			crdChanged = true
+		}
+
+		if err = checkEnvSecrets(clusterClient, rootCtx, devopsapp, env, envNamespace.Name); err != nil {
 			return reconcile.Result{}, err
 		}
 
+		if err = checkEnvCredentials(r, rootCtx, devopsproject, devopsapp, env); err != nil {
+			return reconcile.Result{}, err
+		}
+	}
+
+	if crdChanged {
+		if err = r.Update(rootCtx, devopsapp); err != nil {
+			return reconcile.Result{}, err
+		}
 	}
 
 	return reconcile.Result{}, nil
 }
 
-func checkHarborSecret(r *ReconcileDevOpsApp, ctx context.Context, registry *devopsv1alpha3.Registry, env devopsv1alpha3.Environment, namespace string) error {
-	envRegistry := &devopsv1alpha3.Registry{
-		Url:      registry.Url,
-		Username: registry.Username,
-		Password: registry.Password,
-		Email:    registry.Email,
+func getClusterClient(r *ReconcileDevOpsApp, clusterName string) (clusterClient *kubeclient.Clientset, err error) {
+	if clusterClient, ok := r.clusterClients[clusterName]; ok {
+		if _, err := clusterClient.Discovery().ServerVersion(); err == nil {
+			return clusterClient, nil
+		}
+	}
+
+	clusterLister := r.clusterInformer.Lister()
+	cluster, err := clusterLister.Get(clusterName)
+	if err != nil {
+		return &kubeclient.Clientset{}, err
+	}
+
+	clientConfig, err := clientcmd.NewClientConfigFromBytes(cluster.Spec.Connection.KubeConfig)
+	if err != nil {
+		return &kubeclient.Clientset{}, err
+	}
+
+	clusterConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return &kubeclient.Clientset{}, err
+	}
+
+	newClusterClient, err := kubeclient.NewForConfig(clusterConfig)
+	if err != nil {
+		return &kubeclient.Clientset{}, err
+	}
+
+	r.clusterClients[clusterName] = newClusterClient
+	return newClusterClient, nil
+}
+
+func checkEnvNamespace(ctx context.Context, clusterClient *kubeclient.Clientset, workspace string, devopsappName string, env devopsv1alpha3.Environment) (namespace *corev1.Namespace, err error) {
+	envNamespaceName := env.Namespace
+	if envNamespaceName == "" {
+		envNamespaceName = env.Name + "-" + devopsappName
+	}
+
+	envNamespace, err := clusterClient.CoreV1().Namespaces().Get(ctx, envNamespaceName, metav1.GetOptions{})
+	if err == nil && envNamespace.ObjectMeta.Labels["kubesphere.io/workspace"] == workspace {
+		return envNamespace, nil
+	}
+
+	if err != nil {
+		envNamespace = &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: envNamespaceName,
+				Labels: map[string]string{
+					"kubesphere.io/workspace": workspace,
+				},
+			},
+		}
+	} else {
+		envNamespace = &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				GenerateName: envNamespaceName,
+				Labels: map[string]string{
+					"kubesphere.io/workspace": workspace,
+				},
+			},
+		}
+	}
+
+	if envNamespace, err = clusterClient.CoreV1().Namespaces().Create(ctx, envNamespace, metav1.CreateOptions{}); err != nil {
+		return nil, err
+	}
+
+	return envNamespace, nil
+}
+
+func checkDevOpsProject(r *ReconcileDevOpsApp, ctx context.Context, devopsapp *devopsv1alpha3.DevOpsApp) (devopsproject *devopsv1alpha3.DevOpsProject, err error) {
+	workspace := devopsapp.Labels["kubesphere.io/workspace"]
+	devopsprojectName := devopsapp.Spec.DevOpsProject
+
+	if devopsprojectName != "" {
+		devopsproject := &devopsv1alpha3.DevOpsProject{}
+		if err := r.Get(ctx, types.NamespacedName{Name: devopsprojectName}, devopsproject); err == nil {
+			return devopsproject, nil
+		} else {
+			devopsproject.Name = devopsprojectName
+			devopsproject.GenerateName = devopsapp.Name
+			devopsproject.ObjectMeta.Labels["kubesphere.io/workspace"] = workspace
+			err = r.Create(ctx, devopsproject)
+			return devopsproject, err
+		}
+	}
+
+	devopsprojectList := &devopsv1alpha3.DevOpsProjectList{}
+	opts := &client.ListOptions{
+		LabelSelector: labels.SelectorFromSet(labels.Set{"kubesphere.io/workspace": workspace}),
+	}
+	if err := r.List(ctx, devopsprojectList, opts); err == nil {
+		for _, project := range devopsprojectList.Items {
+			if devopsapp.Name == project.GenerateName {
+				return &project, nil
+			}
+		}
+	}
+
+	devopsproject = &devopsv1alpha3.DevOpsProject{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: devopsapp.Name,
+			Labels: map[string]string{
+				"kubesphere.io/workspace": workspace,
+			},
+		},
+	}
+	err = r.Create(ctx, devopsproject)
+	return devopsproject, err
+}
+
+func checkCommonCredentials(r *ReconcileDevOpsApp, ctx context.Context, devopsproject *devopsv1alpha3.DevOpsProject, devopsapp *devopsv1alpha3.DevOpsApp) error {
+	if err := doCheckBasicAuthCredential(r, ctx, devopsproject.Name, "git", devopsapp.Spec.Git.Username, devopsapp.Spec.Git.Password); err != nil {
+		return err
+	}
+
+	if err := doCheckBasicAuthCredential(r, ctx, devopsproject.Name, "harbor", devopsapp.Spec.Registry.Username, devopsapp.Spec.Registry.Password); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func checkEnvSecrets(clusterClient *kubeclient.Clientset, ctx context.Context, devopsapp *devopsv1alpha3.DevOpsApp, env devopsv1alpha3.Environment, namespace string) error {
+	commonRegistry := devopsapp.Spec.Registry
+	registry := &devopsv1alpha3.Registry{
+		Url:      commonRegistry.Url,
+		Username: commonRegistry.Username,
+		Password: commonRegistry.Password,
+		Email:    commonRegistry.Email,
 	}
 	if env.Registry != nil {
-		envRegistry.Url = env.Registry.Url
-		envRegistry.Username = env.Registry.Username
-		envRegistry.Password = env.Registry.Password
-		envRegistry.Email = env.Registry.Email
+		registry.Url = env.Registry.Url
+		registry.Username = env.Registry.Username
+		registry.Password = env.Registry.Password
+		registry.Email = env.Registry.Email
 	}
 
 	secretName := "harbor"
-	secretInstance := &corev1.Secret{}
-	rawAuth := envRegistry.Username + ":" + envRegistry.Password
+	rawAuth := registry.Username + ":" + registry.Password
 	encodedAuth := make([]byte, base64.StdEncoding.EncodedLen(len(rawAuth)))
 	base64.StdEncoding.Encode(encodedAuth, []byte(rawAuth))
 	auth := string(encodedAuth)
 	if strings.HasSuffix(auth, "==") {
 		auth = auth[0 : len(auth)-2]
 	}
-	if err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: namespace}, secretInstance); err != nil {
+
+	var secretInstance, err = clusterClient.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
+	if err != nil {
 		dockerConfigJson := &DockerConfigJson{Auths: DockerConfigMap{}}
-		dockerConfigJson.Auths[envRegistry.Url] = DockerConfigEntry{
-			Username: envRegistry.Username,
-			Password: envRegistry.Password,
-			Email:    envRegistry.Email,
+		dockerConfigJson.Auths[registry.Url] = DockerConfigEntry{
+			Username: registry.Username,
+			Password: registry.Password,
+			Email:    registry.Email,
 			Auth:     auth,
 		}
 		secretData, _ := json.Marshal(dockerConfigJson)
 
+		secretInstance = &corev1.Secret{}
 		secretInstance.Name = secretName
 		secretInstance.Namespace = namespace
 		secretInstance.Type = corev1.SecretTypeDockerConfigJson
 		secretInstance.StringData = map[string]string{corev1.DockerConfigJsonKey: string(secretData)}
-		if err = r.Create(ctx, secretInstance); err != nil {
-			return err
-		} else {
-			return nil
-		}
+		_, err := clusterClient.CoreV1().Secrets(namespace).Create(ctx, secretInstance, metav1.CreateOptions{})
+		return err
 	}
 
 	secretData := secretInstance.Data[corev1.DockerConfigJsonKey]
 	dockerConfigJson := &DockerConfigJson{Auths: DockerConfigMap{}}
 	json.Unmarshal(secretData, dockerConfigJson)
-	dockerConfigEntry := dockerConfigJson.Auths[envRegistry.Url]
-	if dockerConfigEntry.Username == envRegistry.Username && dockerConfigEntry.Password == envRegistry.Password {
+	dockerConfigEntry := dockerConfigJson.Auths[registry.Url]
+	if dockerConfigEntry.Username == registry.Username && dockerConfigEntry.Password == registry.Password {
 		return nil
 	}
 
 	dockerConfigJson.Auths = DockerConfigMap{}
-	dockerConfigJson.Auths[envRegistry.Url] = DockerConfigEntry{
-		Username: envRegistry.Username,
-		Password: envRegistry.Password,
-		Email:    envRegistry.Email,
+	dockerConfigJson.Auths[registry.Url] = DockerConfigEntry{
+		Username: registry.Username,
+		Password: registry.Password,
+		Email:    registry.Email,
 		Auth:     auth,
 	}
 	secretDataBytes, _ := json.Marshal(dockerConfigJson)
 	secretInstance.StringData = map[string]string{corev1.DockerConfigJsonKey: string(secretDataBytes)}
-	if err := r.Update(ctx, secretInstance); err != nil {
-		return err
-	}
-	return nil
+	_, err = clusterClient.CoreV1().Secrets(namespace).Update(ctx, secretInstance, metav1.UpdateOptions{})
+	return err
 }
 
-func checkDevOpsCredentials(r *ReconcileDevOpsApp, ctx context.Context, devopsapp *devopsv1alpha3.DevOpsApp, env devopsv1alpha3.Environment) error {
-	devopsappName := devopsapp.Name
-	workspace := devopsapp.Labels["kubesphere.io/workspace"]
-
-	devOpsProjectList := &devopsv1alpha3.DevOpsProjectList{}
-	opts := &client.ListOptions{
-		LabelSelector: labels.SelectorFromSet(labels.Set{"kubesphere.io/workspace": workspace}),
-	}
-	if err := r.List(ctx, devOpsProjectList, opts); err != nil || len(devOpsProjectList.Items) == 0 {
-		return nil
-	}
-
-	devOpsProject := devopsv1alpha3.DevOpsProject{}
-	for _, project := range devOpsProjectList.Items {
-		if devopsappName == project.GenerateName {
-			devOpsProject = project
-			break
-		}
-	}
-	if devOpsProject.Name == "" {
-		return nil
-	}
-
-	devopsNamespace := devOpsProject.Name
-	if err := doCheckBasicAuthCredential(r, ctx, devopsNamespace, "git", devopsapp.Spec.Git.Username, devopsapp.Spec.Git.Password); err != nil {
-		return err
-	}
-	if err := doCheckBasicAuthCredential(r, ctx, devopsNamespace, "harbor", devopsapp.Spec.Registry.Username, devopsapp.Spec.Registry.Password); err != nil {
-		return err
-	}
-
+func checkEnvCredentials(r *ReconcileDevOpsApp, ctx context.Context, devopsproject *devopsv1alpha3.DevOpsProject, devopsapp *devopsv1alpha3.DevOpsApp, env devopsv1alpha3.Environment) error {
 	if len(env.Credentials) == 0 {
 		return nil
 	}
@@ -269,13 +390,13 @@ func checkDevOpsCredentials(r *ReconcileDevOpsApp, ctx context.Context, devopsap
 	for _, credential := range env.Credentials {
 		var err error
 		if credential.Type == "basic-auth" {
-			err = doCheckBasicAuthCredential(r, ctx, devopsNamespace, credential.Name, credential.Username, credential.Password)
+			err = doCheckBasicAuthCredential(r, ctx, devopsproject.Name, credential.Name, credential.Username, credential.Password)
 		} else if credential.Type == "kubeconfig" {
-			err = doCheckKubeConfigCredential(r, ctx, devopsNamespace, credential.Name, credential.Content)
+			err = doCheckKubeConfigCredential(r, ctx, devopsproject.Name, credential.Name, credential.Content)
 		} else if credential.Type == "secret-text" {
-			err = doCheckSecretTextCredential(r, ctx, devopsNamespace, credential.Name, credential.Secret)
+			err = doCheckSecretTextCredential(r, ctx, devopsproject.Name, credential.Name, credential.Secret)
 		} else if credential.Type == "ssh-auth" {
-			err = doCheckSshAuthCredential(r, ctx, devopsNamespace, credential.Name, credential.Username, credential.Password, credential.PrivateKey)
+			err = doCheckSshAuthCredential(r, ctx, devopsproject.Name, credential.Name, credential.Username, credential.Password, credential.PrivateKey)
 		}
 		if err != nil {
 			return err
@@ -285,8 +406,9 @@ func checkDevOpsCredentials(r *ReconcileDevOpsApp, ctx context.Context, devopsap
 }
 
 func doCheckBasicAuthCredential(r *ReconcileDevOpsApp, ctx context.Context, namespace string, name string, username string, password string) error {
-	if _, err := r.devopsClient.GetCredentialInProject(namespace, name); err != nil {
-		secret := &corev1.Secret{
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
+		secret = &corev1.Secret{
 			Type: devopsv1alpha3.SecretTypeBasicAuth,
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
@@ -300,23 +422,20 @@ func doCheckBasicAuthCredential(r *ReconcileDevOpsApp, ctx context.Context, name
 		return r.Create(ctx, secret)
 	}
 
-	secret := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
+	if string(secret.Data["username"]) == username && string(secret.Data["password"]) == password {
 		return nil
 	}
 
-	if string(secret.Data["username"]) != username || string(secret.Data["password"]) != password {
-		secret.Data = map[string][]byte{
-			"username": []byte(username),
-			"password": []byte(password),
-		}
-		return r.Update(ctx, secret)
+	secret.Data = map[string][]byte{
+		"username": []byte(username),
+		"password": []byte(password),
 	}
-	return nil
+	return r.Update(ctx, secret)
 }
 
 func doCheckKubeConfigCredential(r *ReconcileDevOpsApp, ctx context.Context, namespace string, name string, content string) error {
-	if _, err := r.devopsClient.GetCredentialInProject(namespace, name); err != nil {
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
 		secret := &corev1.Secret{
 			Type: devopsv1alpha3.SecretTypeKubeConfig,
 			ObjectMeta: metav1.ObjectMeta{
@@ -330,22 +449,19 @@ func doCheckKubeConfigCredential(r *ReconcileDevOpsApp, ctx context.Context, nam
 		return r.Create(ctx, secret)
 	}
 
-	secret := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
+	if string(secret.Data["content"]) == content {
 		return nil
 	}
 
-	if string(secret.Data["content"]) != content {
-		secret.Data = map[string][]byte{
-			"content": []byte(content),
-		}
-		return r.Update(ctx, secret)
+	secret.Data = map[string][]byte{
+		"content": []byte(content),
 	}
-	return nil
+	return r.Update(ctx, secret)
 }
 
 func doCheckSecretTextCredential(r *ReconcileDevOpsApp, ctx context.Context, namespace string, name string, secretText string) error {
-	if _, err := r.devopsClient.GetCredentialInProject(namespace, name); err != nil {
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
 		secret := &corev1.Secret{
 			Type: devopsv1alpha3.SecretTypeSecretText,
 			ObjectMeta: metav1.ObjectMeta{
@@ -359,22 +475,19 @@ func doCheckSecretTextCredential(r *ReconcileDevOpsApp, ctx context.Context, nam
 		return r.Create(ctx, secret)
 	}
 
-	secret := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
+	if string(secret.Data["secret"]) == secretText {
 		return nil
 	}
 
-	if string(secret.Data["secret"]) != secretText {
-		secret.Data = map[string][]byte{
-			"secret": []byte(secretText),
-		}
-		return r.Update(ctx, secret)
+	secret.Data = map[string][]byte{
+		"secret": []byte(secretText),
 	}
-	return nil
+	return r.Update(ctx, secret)
 }
 
 func doCheckSshAuthCredential(r *ReconcileDevOpsApp, ctx context.Context, namespace string, name string, username string, password string, privateKey string) error {
-	if _, err := r.devopsClient.GetCredentialInProject(namespace, name); err != nil {
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
 		secret := &corev1.Secret{
 			Type: devopsv1alpha3.SecretTypeSSHAuth,
 			ObjectMeta: metav1.ObjectMeta{
@@ -390,18 +503,14 @@ func doCheckSshAuthCredential(r *ReconcileDevOpsApp, ctx context.Context, namesp
 		return r.Create(ctx, secret)
 	}
 
-	secret := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, secret); err != nil {
+	if string(secret.Data["username"]) == username && string(secret.Data["passphrase"]) == password && string(secret.Data["private_key"]) == privateKey {
 		return nil
 	}
 
-	if string(secret.Data["username"]) != username || string(secret.Data["passphrase"]) != password || string(secret.Data["private_key"]) != privateKey {
-		secret.Data = map[string][]byte{
-			"username":    []byte(username),
-			"passphrase":  []byte(password),
-			"private_key": []byte(privateKey),
-		}
-		return r.Update(ctx, secret)
+	secret.Data = map[string][]byte{
+		"username":    []byte(username),
+		"passphrase":  []byte(password),
+		"private_key": []byte(privateKey),
 	}
-	return nil
+	return r.Update(ctx, secret)
 }

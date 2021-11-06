@@ -28,13 +28,14 @@ import (
 type DevOpsAppSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	AutoUpdate   bool          `json:"autoUpdate,omitempty" description:"Whether to update related resources when DevOpsApp CRD changed"`
-	Desc         string        `json:"desc,omitempty" description:"Description of the DevOpsApp"`
-	Mode         string        `json:"mode,omitempty" description:"DevOps application mode: java, nodejs"`
-	Registry     *Registry     `json:"registry,omitempty" description:"Docker registry for this DevOpsApp"`
-	Git          *Git          `json:"git,omitempty" description:"Git information for this DevOpsApp"`
-	ConfigCenter *ConfigCenter `json:"configCenter,omitempty" description:"Configuration center information"`
-	Environments []Environment `json:"environments,omitempty" description:"Environments holds all environment for  this DevOpsApp"`
+	AutoUpdate    bool          `json:"autoUpdate,omitempty" description:"Whether to update related resources when DevOpsApp CRD changed"`
+	Desc          string        `json:"desc,omitempty" description:"Description of the DevOpsApp"`
+	Mode          string        `json:"mode,omitempty" description:"DevOps application mode: java, nodejs"`
+	Registry      *Registry     `json:"registry,omitempty" description:"Docker registry for this DevOpsApp"`
+	Git           *Git          `json:"git,omitempty" description:"Git information for this DevOpsApp"`
+	ConfigCenter  *ConfigCenter `json:"configCenter,omitempty" description:"Configuration center information"`
+	Environments  []Environment `json:"environments,omitempty" description:"Environments holds all environment for  this DevOpsApp"`
+	DevOpsProject string        `json:"devopsproject,omitemty" description:"Name of related DevOpsProject"`
 }
 
 type Registry struct {
@@ -59,6 +60,7 @@ type ConfigCenter struct {
 }
 
 type Environment struct {
+	Namespace    string        `json:"namespace,omitempty" description:"Namespace of the environment"`
 	Name         string        `json:"name,omitempty" description:"Name of the environment"`
 	Desc         string        `json:"desc,omitempty" description:"Description for the environment"`
 	Cluster      string        `json:"cluster,omitempty" description:"Cluster of the environment"`
@@ -94,6 +96,10 @@ type Credential struct {
 	Password   string `json:"password,omitempty" description:"Password of basic-auth or ssh-auth"`
 	Secret     string `json:"secret,omitempty" description:"Secret of secret-text"`
 	PrivateKey string `json:"privateKey,omitempty" description:"Private key of ssh-auth"`
+}
+
+type PipelineDefinition struct {
+	TemplateName string `json:"templateName,omitempty" description:"Pipeline template name"`
 }
 
 // DevOpsAppStatus defines the observed state of DevOpsApp

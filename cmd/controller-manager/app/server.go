@@ -233,7 +233,7 @@ func run(s *options.KubeSphereControllerManagerOptions, stopCh <-chan struct{}) 
 		klog.Fatalf("Unable to create namespace controller: %v", err)
 	}
 
-	err = devopsapp.Add(mgr, devopsClient)
+	err = devopsapp.Add(mgr, devopsClient, informerFactory.KubeSphereSharedInformerFactory().Cluster().V1alpha1().Clusters())
 	if err != nil {
 		klog.Fatal("Unable to create devopsapp controller")
 	}
