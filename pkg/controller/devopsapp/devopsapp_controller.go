@@ -112,7 +112,7 @@ type TemplateData struct {
 	Name        string
 	Parameters  map[string]string
 	Environment devopsv1alpha3.Environment
-	DevOpsApp   devopsv1alpha3.DevOpsAppSpec
+	DevOpsApp   devopsv1alpha3.DevOpsApp
 }
 
 // ReconcileDevOpsApp reconciles a DevOpsApp object
@@ -632,11 +632,21 @@ func resolveNoScmPipeline(pipelineName string, devopsproject *devopsv1alpha3.Dev
 	if env.Registry == nil {
 		env.Registry = devopsapp.Spec.Registry
 	}
+
+	parameters := make(map[string]string)
+	if len(pipelineTemplate.Spec.JenkinsfileParameters) > 0 {
+		for _, param := range pipelineTemplate.Spec.JenkinsfileParameters {
+			parameters[param.Name] = param.DefaultValue
+			if len(env.Pipeline.Parameters) > 0 && env.Pipeline.Parameters[param.Name] != "" {
+				parameters[param.Name] = env.Pipeline.Parameters[param.Name]
+			}
+		}
+	}
+
 	templateData := TemplateData{
-		Name:        devopsapp.Name,
-		Parameters:  env.Pipeline.Parameters,
+		DevOpsApp:   *devopsapp,
 		Environment: env,
-		DevOpsApp:   devopsapp.Spec,
+		Parameters:  parameters,
 	}
 	buffer := bytes.NewBuffer(nil)
 	if err = goTemplate.Execute(buffer, templateData); err != nil {
