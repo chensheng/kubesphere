@@ -203,7 +203,7 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		if pipeline.Name != env.Pipeline.Name {
+		if env.Pipeline != nil && env.Pipeline.Name != pipeline.Name {
 			devopsapp.Spec.Environments[index].Pipeline.Name = pipeline.Name
 			crdChanged = true
 		}
@@ -298,6 +298,19 @@ func resolveReferenceSecret(r *ReconcileDevOpsApp, ctx context.Context, original
 
 	if len(environments) > 0 {
 		for _, env := range environments {
+			if env.Registry == nil {
+				env.Registry = registry
+			} else if env.Registry.Reference != "" {
+				if secret, ok := secretMap[env.Registry.Reference]; ok {
+					if env.Registry.Username == "" {
+						env.Registry.Username = secret.Spec.Username
+					}
+					if env.Registry.Password == "" {
+						env.Registry.Password = secret.Spec.Password
+					}
+				}
+			}
+
 			if env.ConfigCenter == nil {
 				env.ConfigCenter = configCenter
 			} else if env.ConfigCenter.Reference != "" {
@@ -466,20 +479,7 @@ func checkCommonCredentials(r *ReconcileDevOpsApp, ctx context.Context, devopspr
 }
 
 func checkEnvSecrets(clusterClient *kubeclient.Clientset, ctx context.Context, devopsapp *devopsv1alpha3.DevOpsApp, env devopsv1alpha3.Environment, namespace string) error {
-	commonRegistry := devopsapp.Spec.Registry
-	registry := &devopsv1alpha3.Registry{
-		Url:      commonRegistry.Url,
-		Username: commonRegistry.Username,
-		Password: commonRegistry.Password,
-		Email:    commonRegistry.Email,
-	}
-	if env.Registry != nil {
-		registry.Url = env.Registry.Url
-		registry.Username = env.Registry.Username
-		registry.Password = env.Registry.Password
-		registry.Email = env.Registry.Email
-	}
-
+	registry := env.Registry
 	secretName := "harbor"
 	rawAuth := registry.Username + ":" + registry.Password
 	encodedAuth := make([]byte, base64.StdEncoding.EncodedLen(len(rawAuth)))
@@ -664,7 +664,7 @@ func doCheckSshAuthCredential(r *ReconcileDevOpsApp, ctx context.Context, namesp
 }
 
 func checkEnvPipeline(r *ReconcileDevOpsApp, ctx context.Context, devopsproject *devopsv1alpha3.DevOpsProject, devopsapp *devopsv1alpha3.DevOpsApp, env devopsv1alpha3.Environment) (pipeline *devopsv1alpha3.Pipeline, err error) {
-	if env.Pipeline.TemplateName == "" {
+	if env.Pipeline == nil || env.Pipeline.TemplateName == "" {
 		return &devopsv1alpha3.Pipeline{}, nil
 	}
 
@@ -766,13 +766,6 @@ func resolveNoScmPipeline(pipelineName string, devopsproject *devopsv1alpha3.Dev
 	goTemplate, err := template.New(goTplName).Parse(pipelineTemplate.Spec.Jenkinsfile)
 	if err != nil {
 		return &devopsv1alpha3.NoScmPipeline{}, err
-	}
-
-	if env.ConfigCenter == nil {
-		env.ConfigCenter = devopsapp.Spec.ConfigCenter
-	}
-	if env.Registry == nil {
-		env.Registry = devopsapp.Spec.Registry
 	}
 
 	parameters := make(map[string]string)
