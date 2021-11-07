@@ -18,6 +18,7 @@ package devopsapp
 
 import (
 	"bytes"
+	"container/list"
 	"context"
 	"html/template"
 	"strings"
@@ -149,19 +150,24 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, nil
 	}
 
-	workspace := devopsapp.ObjectMeta.Labels["kubesphere.io/workspace"]
-	envs := devopsapp.Spec.Environments
+	devopsappCopy, err := resolveReferenceSecret(r, rootCtx, *devopsapp)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	workspace := devopsappCopy.ObjectMeta.Labels["kubesphere.io/workspace"]
+	envs := devopsappCopy.Spec.Environments
 	if envs == nil || len(envs) == 0 {
 		return reconcile.Result{}, nil
 	}
 
-	devopsappName := devopsapp.ObjectMeta.GenerateName
+	devopsappName := devopsappCopy.ObjectMeta.GenerateName
 	if devopsappName == "" {
-		devopsappName = devopsapp.ObjectMeta.Name
+		devopsappName = devopsappCopy.ObjectMeta.Name
 	}
 
 	crdChanged := false
-	devopsproject, err := checkDevOpsProject(r, rootCtx, devopsapp)
+	devopsproject, err := checkDevOpsProject(r, rootCtx, devopsappCopy)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -169,7 +175,7 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 		devopsapp.Spec.DevOpsProject = devopsproject.Name
 		crdChanged = true
 	}
-	if err := checkCommonCredentials(r, rootCtx, devopsproject, devopsapp); err != nil {
+	if err := checkCommonCredentials(r, rootCtx, devopsproject, devopsappCopy); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -185,15 +191,15 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 			crdChanged = true
 		}
 
-		if err = checkEnvSecrets(clusterClient, rootCtx, devopsapp, env, envNamespace.Name); err != nil {
+		if err = checkEnvSecrets(clusterClient, rootCtx, devopsappCopy, env, envNamespace.Name); err != nil {
 			return reconcile.Result{}, err
 		}
 
-		if err = checkEnvCredentials(r, rootCtx, devopsproject, devopsapp, env); err != nil {
+		if err = checkEnvCredentials(r, rootCtx, devopsproject, devopsappCopy, env); err != nil {
 			return reconcile.Result{}, err
 		}
 
-		pipeline, err := checkEnvPipeline(r, rootCtx, devopsproject, devopsapp, env)
+		pipeline, err := checkEnvPipeline(r, rootCtx, devopsproject, devopsappCopy, env)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -210,6 +216,135 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	return reconcile.Result{}, nil
+}
+
+func resolveReferenceSecret(r *ReconcileDevOpsApp, ctx context.Context, devopsapp devopsv1alpha3.DevOpsApp) (devopsappCopy *devopsv1alpha3.DevOpsApp, err error) {
+	git := devopsapp.Spec.Git
+	configCenter := devopsapp.Spec.ConfigCenter
+	registry := devopsapp.Spec.Registry
+	environments := devopsapp.Spec.Environments
+
+	references := list.New()
+	if git != nil && git.Reference != "" {
+		references.PushFront(git.Reference)
+	}
+	if configCenter != nil && configCenter.Reference != "" {
+		references.PushFront(configCenter.Reference)
+	}
+	if registry != nil && registry.Reference != "" {
+		references.PushFront(registry.Reference)
+	}
+	if len(environments) > 0 {
+		for _, env := range environments {
+			if env.ConfigCenter != nil && env.ConfigCenter.Reference != "" {
+				references.PushFront(env.ConfigCenter.Reference)
+			}
+			if env.Registry != nil && env.Registry.Reference != "" {
+				references.PushFront(env.Registry.Reference)
+			}
+			if len(env.Credentials) > 0 {
+				for _, credential := range env.Credentials {
+					if credential.Reference != "" {
+						references.PushFront(credential.Reference)
+					}
+				}
+			}
+		}
+	}
+
+	secretMap := make(map[string]*devopsv1alpha3.DevOpsSecret)
+	for ref := references.Front(); ref != nil; ref = ref.Next() {
+		secretName := ref.Value.(string)
+		if _, ok := secretMap[secretName]; ok {
+			continue
+		}
+		secret := &devopsv1alpha3.DevOpsSecret{}
+		if err := r.Get(ctx, types.NamespacedName{Name: secretName}, secret); err == nil {
+			secretMap[secretName] = secret
+		}
+	}
+
+	if git != nil && git.Reference != "" {
+		if secret, ok := secretMap[git.Reference]; ok {
+			if git.Username == "" {
+				git.Username = secret.Spec.Username
+			}
+			if git.Password == "" {
+				git.Password = secret.Spec.Password
+			}
+		}
+	}
+	if configCenter != nil && configCenter.Reference != "" {
+		if secret, ok := secretMap[configCenter.Reference]; ok {
+			if configCenter.Username == "" {
+				configCenter.Username = secret.Spec.Username
+			}
+			if configCenter.Password == "" {
+				configCenter.Password = secret.Spec.Password
+			}
+		}
+	}
+	if registry != nil && registry.Reference != "" {
+		if secret, ok := secretMap[registry.Reference]; ok {
+			if registry.Username == "" {
+				registry.Username = secret.Spec.Username
+			}
+			if registry.Password == "" {
+				registry.Password = secret.Spec.Password
+			}
+		}
+	}
+
+	if len(environments) > 0 {
+		for index, env := range environments {
+			if env.ConfigCenter == nil {
+				env.ConfigCenter = configCenter
+			} else if env.ConfigCenter.Reference != "" {
+				if secret, ok := secretMap[env.ConfigCenter.Reference]; ok {
+					if env.ConfigCenter.Username == "" {
+						env.ConfigCenter.Username = secret.Spec.Username
+					}
+					if env.ConfigCenter.Password == "" {
+						env.ConfigCenter.Password = secret.Spec.Password
+					}
+				}
+			}
+
+			if len(env.Credentials) > 0 {
+				for _, credential := range env.Credentials {
+					if credential.Reference == "" {
+						continue
+					}
+
+					if secret, ok := secretMap[credential.Reference]; ok {
+						if credential.Username == "" {
+							credential.Username = secret.Spec.Username
+						}
+						if credential.Password == "" {
+							credential.Password = secret.Spec.Password
+						}
+						if credential.PrivateKey == "" {
+							credential.PrivateKey = secret.Spec.PrivateKey
+						}
+						if credential.Content == "" {
+							credential.Content = secret.Spec.Content
+						}
+						if credential.Secret == "" {
+							credential.Secret = secret.Spec.Secret
+						}
+					}
+				}
+			}
+			environments[index] = env
+		}
+	}
+
+	devopsapp.Spec.Git = git
+	devopsapp.Spec.ConfigCenter = configCenter
+	devopsapp.Spec.Registry = registry
+	devopsapp.Spec.Environments = environments
+
+	return &devopsapp, nil
 }
 
 func getClusterClient(r *ReconcileDevOpsApp, clusterName string) (clusterClient *kubeclient.Clientset, err error) {

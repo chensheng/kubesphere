@@ -39,10 +39,11 @@ type DevOpsAppSpec struct {
 }
 
 type Registry struct {
-	Url      string `json:"url,omitempty" description:"URL of this docker registry"`
-	Username string `json:"username,omitempty" description:"Username of this docker registry"`
-	Password string `json:"password,omitempty" description:"Password of this docker registry"`
-	Email    string `json:"email,omitempty" description:"Email of this docker registry"`
+	Url       string `json:"url,omitempty" description:"URL of this docker registry"`
+	Username  string `json:"username,omitempty" description:"Username of this docker registry"`
+	Password  string `json:"password,omitempty" description:"Password of this docker registry"`
+	Email     string `json:"email,omitempty" description:"Email of this docker registry"`
+	Reference string `json:"reference,omitempty" description:"Name of DevOpsSecret"`
 }
 
 type Git struct {
@@ -50,6 +51,7 @@ type Git struct {
 	Username   string `json:"username,omitempty" description:"Username of git repository"`
 	Password   string `json:"password,omitempty" description:"Password of git repository"`
 	TargetPath string `json:"targetPath,omitempty" description:"Build target path of git repository"`
+	Reference  string `json:"reference,omitempty" description:"Name of DevOpsSecret"`
 }
 
 type ConfigCenter struct {
@@ -57,6 +59,7 @@ type ConfigCenter struct {
 	ClusterUrl string `json:"clusterUrl,omitempty" description:"Cluster URL for the configuration center"`
 	Username   string `json:"username,omitempty" description:"Username of configuration center"`
 	Password   string `json:"password,omitempty" description:"Password of configuration center"`
+	Reference  string `json:"reference,omitempty" description:"Name of DevOpsSecret"`
 }
 
 type Environment struct {
@@ -87,6 +90,7 @@ type Dependency struct {
 	Username   string `json:"username,omitempty" description:"Username of the dependency"`
 	Password   string `json:"password,omitempty" description:"Password of the dependency"`
 	Database   string `json:"database,omitempty" description:"Database of the dependency"`
+	Reference  string `json:"reference,omitempty" description:"Name of DevOpsSecret"`
 }
 
 type Credential struct {
@@ -97,6 +101,7 @@ type Credential struct {
 	Password   string `json:"password,omitempty" description:"Password of basic-auth or ssh-auth"`
 	Secret     string `json:"secret,omitempty" description:"Secret of secret-text"`
 	PrivateKey string `json:"privateKey,omitempty" description:"Private key of ssh-auth"`
+	Reference  string `json:"reference,omitempty" description:"Name of DevOpsSecret"`
 }
 
 type PipelineDefinition struct {

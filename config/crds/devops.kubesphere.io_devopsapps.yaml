@@ -46,6 +46,8 @@ spec:
                     type: string
                   password:
                     type: string
+                  reference:
+                    type: string
                   url:
                     type: string
                   username:
@@ -66,6 +68,8 @@ spec:
                           type: string
                         password:
                           type: string
+                        reference:
+                          type: string
                         url:
                           type: string
                         username:
@@ -81,6 +85,8 @@ spec:
                           password:
                             type: string
                           privateKey:
+                            type: string
+                          reference:
                             type: string
                           secret:
                             type: string
@@ -102,6 +108,8 @@ spec:
                           desc:
                             type: string
                           password:
+                            type: string
+                          reference:
                             type: string
                           url:
                             type: string
@@ -136,6 +144,8 @@ spec:
                           type: string
                         password:
                           type: string
+                        reference:
+                          type: string
                         url:
                           type: string
                         username:
@@ -159,6 +169,8 @@ spec:
                 properties:
                   password:
                     type: string
+                  reference:
+                    type: string
                   repo:
                     type: string
                   targetPath:
@@ -173,6 +185,8 @@ spec:
                   email:
                     type: string
                   password:
+                    type: string
+                  reference:
                     type: string
                   url:
                     type: string
