@@ -181,7 +181,7 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 
 	for index, env := range envs {
 		var clusterClient, err = getClusterClient(r, env.Cluster)
-		envNamespace, err := checkEnvNamespace(rootCtx, clusterClient, workspace, devopsappName, env)
+		envNamespace, err := checkEnvNamespace(rootCtx, clusterClient, workspace, devopsappName, *env)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -191,15 +191,15 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 			crdChanged = true
 		}
 
-		if err = checkEnvSecrets(clusterClient, rootCtx, devopsappCopy, env, envNamespace.Name); err != nil {
+		if err = checkEnvSecrets(clusterClient, rootCtx, devopsappCopy, *env, envNamespace.Name); err != nil {
 			return reconcile.Result{}, err
 		}
 
-		if err = checkEnvCredentials(r, rootCtx, devopsproject, devopsappCopy, env); err != nil {
+		if err = checkEnvCredentials(r, rootCtx, devopsproject, devopsappCopy, *env); err != nil {
 			return reconcile.Result{}, err
 		}
 
-		pipeline, err := checkEnvPipeline(r, rootCtx, devopsproject, devopsappCopy, env)
+		pipeline, err := checkEnvPipeline(r, rootCtx, devopsproject, devopsappCopy, *env)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -218,7 +218,8 @@ func (r *ReconcileDevOpsApp) Reconcile(request reconcile.Request) (reconcile.Res
 	return reconcile.Result{}, nil
 }
 
-func resolveReferenceSecret(r *ReconcileDevOpsApp, ctx context.Context, devopsapp devopsv1alpha3.DevOpsApp) (devopsappCopy *devopsv1alpha3.DevOpsApp, err error) {
+func resolveReferenceSecret(r *ReconcileDevOpsApp, ctx context.Context, originalDevopsapp devopsv1alpha3.DevOpsApp) (devopsappCopy *devopsv1alpha3.DevOpsApp, err error) {
+	devopsapp := originalDevopsapp.DeepCopy()
 	git := devopsapp.Spec.Git
 	configCenter := devopsapp.Spec.ConfigCenter
 	registry := devopsapp.Spec.Registry
@@ -296,7 +297,7 @@ func resolveReferenceSecret(r *ReconcileDevOpsApp, ctx context.Context, devopsap
 	}
 
 	if len(environments) > 0 {
-		for index, env := range environments {
+		for _, env := range environments {
 			if env.ConfigCenter == nil {
 				env.ConfigCenter = configCenter
 			} else if env.ConfigCenter.Reference != "" {
@@ -335,16 +336,10 @@ func resolveReferenceSecret(r *ReconcileDevOpsApp, ctx context.Context, devopsap
 					}
 				}
 			}
-			environments[index] = env
 		}
 	}
 
-	devopsapp.Spec.Git = git
-	devopsapp.Spec.ConfigCenter = configCenter
-	devopsapp.Spec.Registry = registry
-	devopsapp.Spec.Environments = environments
-
-	return &devopsapp, nil
+	return devopsapp, nil
 }
 
 func getClusterClient(r *ReconcileDevOpsApp, clusterName string) (clusterClient *kubeclient.Clientset, err error) {

@@ -28,14 +28,14 @@ import (
 type DevOpsAppSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	AutoUpdate    bool          `json:"autoUpdate,omitempty" description:"Whether to update related resources when DevOpsApp CRD changed"`
-	Desc          string        `json:"desc,omitempty" description:"Description of the DevOpsApp"`
-	Mode          string        `json:"mode,omitempty" description:"DevOps application mode: java, nodejs"`
-	Registry      *Registry     `json:"registry,omitempty" description:"Docker registry for this DevOpsApp"`
-	Git           *Git          `json:"git,omitempty" description:"Git information for this DevOpsApp"`
-	ConfigCenter  *ConfigCenter `json:"configCenter,omitempty" description:"Configuration center information"`
-	Environments  []Environment `json:"environments,omitempty" description:"Environments holds all environment for  this DevOpsApp"`
-	DevOpsProject string        `json:"devopsproject,omitemty" description:"Name of related DevOpsProject"`
+	AutoUpdate    bool           `json:"autoUpdate,omitempty" description:"Whether to update related resources when DevOpsApp CRD changed"`
+	Desc          string         `json:"desc,omitempty" description:"Description of the DevOpsApp"`
+	Mode          string         `json:"mode,omitempty" description:"DevOps application mode: java, nodejs"`
+	Registry      *Registry      `json:"registry,omitempty" description:"Docker registry for this DevOpsApp"`
+	Git           *Git           `json:"git,omitempty" description:"Git information for this DevOpsApp"`
+	ConfigCenter  *ConfigCenter  `json:"configCenter,omitempty" description:"Configuration center information"`
+	Environments  []*Environment `json:"environments,omitempty" description:"Environments holds all environment for  this DevOpsApp"`
+	DevOpsProject string         `json:"devopsproject,omitemty" description:"Name of related DevOpsProject"`
 }
 
 type Registry struct {
@@ -63,17 +63,17 @@ type ConfigCenter struct {
 }
 
 type Environment struct {
-	Namespace    string             `json:"namespace,omitempty" description:"Namespace of the environment"`
-	Name         string             `json:"name,omitempty" description:"Name of the environment"`
-	Desc         string             `json:"desc,omitempty" description:"Description for the environment"`
-	Cluster      string             `json:"cluster,omitempty" description:"Cluster of the environment"`
-	Gateway      string             `json:"gateway,omitempty" description:"Gateway of the environment"`
-	ConfigCenter *ConfigCenter      `json:"configCenter,omitempty" description:"Configuration center information for the environment"`
-	Registry     *Registry          `json:"registry,omitempty" description:"Docker registry for the environment"`
-	Resource     *EnvResource       `json:"resource,omitempty" description:"Resource of the environment"`
-	Dependencies []Dependency       `json:"dependencies,omitempty" description:"Dependencies of the environment"`
-	Credentials  []Credential       `json:"credentials,omitempty" description:"Credentials of the environment"`
-	Pipeline     PipelineDefinition `json:"pipeline,omitempty" description:"Pipeline definition of the environment"`
+	Namespace    string              `json:"namespace,omitempty" description:"Namespace of the environment"`
+	Name         string              `json:"name,omitempty" description:"Name of the environment"`
+	Desc         string              `json:"desc,omitempty" description:"Description for the environment"`
+	Cluster      string              `json:"cluster,omitempty" description:"Cluster of the environment"`
+	Gateway      string              `json:"gateway,omitempty" description:"Gateway of the environment"`
+	ConfigCenter *ConfigCenter       `json:"configCenter,omitempty" description:"Configuration center information for the environment"`
+	Registry     *Registry           `json:"registry,omitempty" description:"Docker registry for the environment"`
+	Resource     *EnvResource        `json:"resource,omitempty" description:"Resource of the environment"`
+	Dependencies []*Dependency       `json:"dependencies,omitempty" description:"Dependencies of the environment"`
+	Credentials  []*Credential       `json:"credentials,omitempty" description:"Credentials of the environment"`
+	Pipeline     *PipelineDefinition `json:"pipeline,omitempty" description:"Pipeline definition of the environment"`
 }
 
 type EnvResource struct {
