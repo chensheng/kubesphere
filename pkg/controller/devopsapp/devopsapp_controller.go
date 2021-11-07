@@ -585,6 +585,10 @@ func isPipelineChanged(existingNoScmPipeline *devopsv1alpha3.NoScmPipeline, newN
 		return true
 	}
 
+	if (existingNoScmPipeline.Discarder == nil && newNoScmPipeline.Discarder != nil) || (existingNoScmPipeline.Discarder != nil && newNoScmPipeline.Discarder == nil) {
+		return true
+	}
+
 	if existingNoScmPipeline.Discarder.DaysToKeep != newNoScmPipeline.Discarder.DaysToKeep || existingNoScmPipeline.Discarder.NumToKeep != newNoScmPipeline.Discarder.NumToKeep {
 		return true
 	}
@@ -593,11 +597,19 @@ func isPipelineChanged(existingNoScmPipeline *devopsv1alpha3.NoScmPipeline, newN
 		return true
 	}
 
-	if existingNoScmPipeline.RemoteTrigger.Token != newNoScmPipeline.RemoteTrigger.Token {
+	if (existingNoScmPipeline.RemoteTrigger == nil && newNoScmPipeline.RemoteTrigger != nil) || (existingNoScmPipeline.RemoteTrigger != nil && newNoScmPipeline.RemoteTrigger == nil) {
 		return true
 	}
 
-	if existingNoScmPipeline.TimerTrigger.Cron != newNoScmPipeline.TimerTrigger.Cron || existingNoScmPipeline.TimerTrigger.Interval != newNoScmPipeline.TimerTrigger.Interval {
+	if (existingNoScmPipeline.RemoteTrigger != nil && newNoScmPipeline.RemoteTrigger != nil) && (existingNoScmPipeline.RemoteTrigger.Token != newNoScmPipeline.RemoteTrigger.Token) {
+		return true
+	}
+
+	if (existingNoScmPipeline.TimerTrigger == nil && newNoScmPipeline.TimerTrigger != nil) || (existingNoScmPipeline.TimerTrigger != nil && newNoScmPipeline.TimerTrigger == nil) {
+		return true
+	}
+
+	if (existingNoScmPipeline.TimerTrigger != nil && newNoScmPipeline.TimerTrigger != nil) && (existingNoScmPipeline.TimerTrigger.Cron != newNoScmPipeline.TimerTrigger.Cron || existingNoScmPipeline.TimerTrigger.Interval != newNoScmPipeline.TimerTrigger.Interval) {
 		return true
 	}
 
